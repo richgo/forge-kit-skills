@@ -33,22 +33,26 @@ test('APMX verifies the story, observed outcome and deployed digest', async () =
   const requirements = await readFile(template);
   const { trace } = selectStory(JSON.parse(requirements), 'STORY-001');
   const artifact = Buffer.from('candidate');
+  const plan = { requirement: trace.story, target: trace.node, trace, implementation: { mode: 'direct' }, maxRepairs: 1 };
   const receipt = {
     _type: 'https://in-toto.io/Statement/v1',
     predicateType: 'https://github.com/richgo/forge-kit/attestations/bootstrap/v3',
     subject: [{ name: 'deployed.mjs', digest: { sha256: digest(artifact) } }],
     predicate: {
       requirement: 'STORY-001',
+      repairs: 0,
+      implementation: plan.implementation,
       trace,
       materials: [{ name: 'product-requirements.json', digest: { sha256: digest(requirements) } }],
       stages: ['requirements', 'architecture', 'plan', 'build', 'test', 'deploy', 'observe', 'evidence', 'review-ready'],
       observation: { stdout: 'ready\n', exitCode: 0 },
     },
   };
-  const report = verifyTrace(requirements, receipt, artifact);
+  const report = verifyTrace(requirements, plan, receipt, artifact);
   assert.equal(report.trace.story, 'STORY-001');
   assert.equal(report.artifactSha256, digest(artifact));
-  assert.throws(() => verifyTrace(requirements, receipt, Buffer.from('modified')), /digest/);
+  assert.throws(() => verifyTrace(requirements, plan, receipt, Buffer.from('modified')), /digest/);
+  assert.throws(() => verifyTrace(requirements, { ...plan, target: 'wrong' }, receipt, artifact), /CALM node/);
   receipt.predicate.observation.stdout = 'broken\n';
-  assert.throws(() => verifyTrace(requirements, receipt, artifact), /AC-001/);
+  assert.throws(() => verifyTrace(requirements, plan, receipt, artifact), /AC-001/);
 });

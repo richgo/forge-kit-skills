@@ -72,11 +72,17 @@ export function selectStory(document, storyId) {
   return selected;
 }
 
-export function verifyTrace(requirements, receipt, artifact) {
+export function verifyTrace(requirements, plan, receipt, artifact) {
   assert.equal(receipt._type, 'https://in-toto.io/Statement/v1');
   assert.equal(receipt.predicateType, 'https://github.com/richgo/forge-kit/attestations/bootstrap/v3');
   const { predicate } = receipt;
   const { trace } = selectStory(JSON.parse(requirements), predicate.requirement);
+  assert.deepEqual(plan.trace, trace, 'Plan story trace mismatch');
+  assert.equal(plan.requirement, trace.story, 'Plan selects a different story');
+  assert.equal(plan.target, trace.node, 'Plan targets a different CALM node');
+  assert.deepEqual(plan.implementation, predicate.implementation, 'Plan implementation mismatch');
+  assert.ok([0, 1].includes(plan.maxRepairs) && Number.isSafeInteger(predicate.repairs) &&
+    predicate.repairs >= 0 && predicate.repairs <= plan.maxRepairs, 'Repair exceeds plan budget');
   assert.deepEqual(predicate.trace, trace, 'Receipt story trace mismatch');
   const requirementsSha256 = sha256(requirements);
   assert.deepEqual(predicate.materials.filter(item => item.name === 'product-requirements.json'), [
@@ -87,7 +93,7 @@ export function verifyTrace(requirements, receipt, artifact) {
     { name: 'deployed.mjs', digest: { sha256: artifactSha256 } },
   ], 'Deployed artifact digest mismatch');
   const stages = ['requirements', 'architecture', 'plan', 'build', 'test'];
-  if (predicate.stages.includes('repair')) stages.push('repair', 'build', 'test');
+  if (predicate.repairs) stages.push('repair', 'build', 'test');
   stages.push('deploy', 'observe', 'evidence', 'review-ready');
   assert.deepEqual(predicate.stages, stages, 'Incomplete requirements-to-deployment evidence');
   const observation = predicate.observation;
