@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "epics": [
+    {
+      "id": "EPIC-001",
+      "title": "Operational readiness",
+      "outcome": "Operators can tell whether the deployed system is ready.",
+      "features": [
+        {
+          "id": "FEAT-001",
+          "title": "Readiness probe",
+          "outcome": "A single probe reports whether the deployment is ready.",
+          "stories": [
+            {
+              "id": "STORY-001",
+              "title": "Report successful readiness",
+              "asA": "release operator",
+              "iWant": "a readiness probe I can run",
+              "soThat": "I can verify the deployed build is ready",
+              "architectureNode": "health_probe",
+              "acceptanceCriteria": [
+                {
+                  "id": "AC-001",
+                  "given": "The verified readiness probe is deployed.",
+                  "when": "run-readiness-probe",
+                  "then": { "stdout": "ready" }
+                },
+                {
+                  "id": "AC-002",
+                  "given": "The verified readiness probe is deployed.",
+                  "when": "run-readiness-probe",
+                  "then": { "exitCode": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
