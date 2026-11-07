@@ -1,0 +1,1 @@
+{ "path": "/ready", "beforeStatus": 503, "beforeBody": "offline", "afterStatus": 200, "afterBody": "ready" }

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "exports": [
+    { "kind": "apmx-contract", "path": "contracts/repair-evidence.contract.md" },
+    { "kind": "repair-check", "path": "checks/repair-evidence.mjs" }
+  ]
+}

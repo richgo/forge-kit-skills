@@ -1,0 +1,13 @@
+specification {
+  element service
+}
+model {
+  monitor = service 'Monitor'
+  readiness = service 'Readiness'
+  monitor -> readiness
+}
+views {
+  view index {
+    include *
+  }
+}

@@ -8,7 +8,11 @@ requirements, build, review, and repair workflows.
 | [`packages/build-repair`](packages/build-repair) | 0.1.0 | TDD, bounded diagnosis, and a repair prompt |
 | [`packages/requirements`](packages/requirements) | 0.1.0 | Requirements skill, planning prompt, and spec reviewer |
 | [`packages/security-review`](packages/security-review) | 0.1.0 | Report-only triage skill and security reviewer |
-| [`packages/factory-workflows`](packages/factory-workflows) | 0.1.0 | Verification prompt, GH-AW read-only MCP import, and APMX repair-planning contract |
+| [`packages/factory-workflows`](packages/factory-workflows) | 0.2.0 | Callable GH-AW reference workflow, typed repair routing, read-only MCP import, and repair planning |
+| [`packages/architecture`](packages/architecture) | 0.1.0 | CALM requirement traceability and LikeC4 projection and drift check |
+| [`packages/acceptance`](packages/acceptance) | 0.1.0 | APMX build contract and independent acceptance with signed in-toto evidence |
+| [`packages/repair-acceptance`](packages/repair-acceptance) | 0.1.0 | APMX contract and independent before-and-after repair check |
+| [`packages/delivery`](packages/delivery) | 0.1.0 | Gated promotion, HTTP readiness observation, and rollback |
 
 ## Consume a package
 
@@ -39,6 +43,11 @@ are source exports. Copy the approved GH-AW fragment into the consumer's
 declared read permission and scope GitHub access to its approved repository.
 APMX can select the contract from the pinned package with `apmx --from`.
 Its workspace needs `failure.md`.
+
+APM installs the agent primitives. The `exports.json` in each new package
+also identifies executable source assets. Fetch those assets from the same
+reviewed catalog commit. See [the reference runbook](docs/reference.md) for
+the callable workflow, APMX package plans, and an offline rehearsal.
 
 ## Release and reuse
 

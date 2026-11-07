@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "exports": [
+    { "kind": "apmx-contract", "path": "contracts/build.contract.md" },
+    { "kind": "independent-check", "path": "checks/acceptance.mjs" }
+  ]
+}

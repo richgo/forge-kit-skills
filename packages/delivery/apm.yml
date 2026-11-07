@@ -1,0 +1,7 @@
+name: forge-kit-delivery
+version: "0.1.0"
+description: Gated promotion, readiness observation, rollback, and bounded repair handoff.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []
