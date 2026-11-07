@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "exports": [
+    { "kind": "requirements-template", "path": "templates/product-requirements.json" },
+    { "kind": "authoring-template", "path": "templates/authoring.md" },
+    { "kind": "requirements-check", "path": "checks/product-requirements.mjs" },
+    { "kind": "apmx-contract", "path": "contracts/verify-requirements.contract.md" }
+  ]
+}
