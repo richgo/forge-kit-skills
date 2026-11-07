@@ -45,3 +45,24 @@ jobs:
           key="$(node "$runtime" check out/handoff)"
           FORGE_CHECKER_PUBLIC_KEY="$key" node "$runtime" deliver out/handoff
           node "$runtime" rehearse out/repair --fail-first-observation
+      - name: Resolve and plan both immutable APMX packages
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          CATALOG_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CATALOG_REF" =~ ^[0-9a-f]{40}$ ]]
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error 'https://github.com/danielmeppiel/apmx/releases/download/v0.8.0/apmx-0.8.0-linux-x86_64.tar.gz' -o "$scratch/apmx.tar.gz"
+          printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
+          apmx="$(find "$scratch" -type f -name apmx -print -quit)"
+          mkdir "$scratch/copilot"
+          copilot_package="$(npm pack --ignore-scripts --silent --pack-destination "$scratch" @github/copilot-linux-x64@1.0.107)"
+          tar -xzf "$scratch/$copilot_package" -C "$scratch/copilot"
+          export PATH="$scratch/copilot/package:$PATH"
+          cp -R examples/reference "$scratch/workspace"
+          cd "$scratch/workspace"
+          for package in acceptance repair-acceptance; do
+            "$apmx" --from "richgo/forge-kit-skills/packages/$package#$CATALOG_REF" --plan
+          done
