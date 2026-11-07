@@ -32,7 +32,11 @@ jobs:
           printf '%s  %s\n' '746d0b41d5fb87e2c010b8ac23a464436bb745ff89fbd19a3456431942c37652' "$compiler" | sha256sum --check
           chmod +x "$compiler"
           "$compiler" compile forge-reference --no-check-update --no-logo --gh-aw-ref 0627fdbe4beb5f3b71aa569f8d97150b87f2111a
-          git diff --exit-code -- .github/workflows/forge-reference.lock.yml
+          lock=.github/workflows/forge-reference.lock.yml
+          pin=0627fdbe4beb5f3b71aa569f8d97150b87f2111a
+          # The compiler adds a redundant setup-ref comment on Linux.
+          normalize="s|github/gh-aw/actions/setup@$pin # $pin\$|github/gh-aw/actions/setup@$pin|"
+          diff -u <(git show "HEAD:$lock" | sed -e "$normalize") <(sed -e "$normalize" "$lock")
       - name: Rehearse the independent handoff and rollback
         run: |
           set -euo pipefail
