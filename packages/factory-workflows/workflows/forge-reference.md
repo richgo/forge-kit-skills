@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
 engine: copilot
+inlined-imports: true
 imports:
   - shared/forge-github-read.md
 network:

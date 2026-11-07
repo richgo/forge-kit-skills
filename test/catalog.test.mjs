@@ -23,6 +23,7 @@ test('the callable workflow mirrors package sources and grants no write scopes',
   }
   const lock = await read('.github/workflows/forge-reference.lock.yml');
   assert.match(lock, /^  workflow_call:$/m);
+  assert.doesNotMatch(lock, /\{\{#runtime-import\s/);
   assert.doesNotMatch(lock, /^\s+[a-z-]+: write\s*$/m);
   const manifest = JSON.parse(lock.split('\n').find(line => line.startsWith('# gh-aw-manifest: ')).slice(18));
   for (const server of manifest.mcp_servers) {
