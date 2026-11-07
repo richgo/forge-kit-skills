@@ -1,0 +1,8 @@
+name: forge-kit-security-review
+version: "0.1.0"
+description: Read-only security triage grounded in scanner and source evidence.
+targets:
+  - copilot
+dependencies:
+  apm: []
+  mcp: []

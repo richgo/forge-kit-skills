@@ -1,0 +1,8 @@
+name: forge-kit-requirements
+version: "0.1.0"
+description: Turn requirements into acceptance criteria and a dependency-ordered work graph.
+targets:
+  - copilot
+dependencies:
+  apm: []
+  mcp: []

@@ -1,0 +1,8 @@
+name: forge-kit-factory-workflows
+version: "0.1.0"
+description: Forge Kit workflow components, MCP policy, and APMX contract sources.
+targets:
+  - copilot
+dependencies:
+  apm: []
+  mcp: []

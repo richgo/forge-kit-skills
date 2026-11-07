@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "exports": [
+    {
+      "kind": "gh-aw-import",
+      "path": "workflows/shared/forge-github-read.md"
+    },
+    {
+      "kind": "apmx-contract",
+      "path": "contracts/repair-plan.contract.md"
+    }
+  ]
+}

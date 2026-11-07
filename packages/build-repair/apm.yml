@@ -1,0 +1,8 @@
+name: forge-kit-build-repair
+version: "0.1.0"
+description: Test-driven implementation and bounded defect diagnosis.
+targets:
+  - copilot
+dependencies:
+  apm: []
+  mcp: []
