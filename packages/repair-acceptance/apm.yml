@@ -1,0 +1,7 @@
+name: forge-kit-repair-acceptance
+version: "0.1.0"
+description: APMX contract and independent replay for a recorded repair.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []

@@ -1,0 +1,68 @@
+name: Validate APM catalog
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22.22.3'
+      - run: node --test
+      - name: Validate architecture and view with upstream tools
+        run: |
+          npx --yes --package @finos/calm-cli@1.68.0 calm validate -a examples/reference/architecture.json
+          npx --yes --package likec4@1.60.0 likec4 validate examples/reference
+      - name: Check the compiled GH-AW export
+        run: |
+          set -euo pipefail
+          compiler="$RUNNER_TEMP/gh-aw"
+          curl --fail --location --silent --show-error 'https://github.com/github/gh-aw/releases/download/v1.0.1/linux-amd64' -o "$compiler"
+          printf '%s  %s\n' '746d0b41d5fb87e2c010b8ac23a464436bb745ff89fbd19a3456431942c37652' "$compiler" | sha256sum --check
+          chmod +x "$compiler"
+          "$compiler" compile forge-reference --no-check-update --no-logo --gh-aw-ref 0627fdbe4beb5f3b71aa569f8d97150b87f2111a
+          lock=.github/workflows/forge-reference.lock.yml
+          pin=0627fdbe4beb5f3b71aa569f8d97150b87f2111a
+          # The compiler adds a redundant setup-ref comment on Linux.
+          normalize="s|github/gh-aw/actions/setup@$pin # $pin\$|github/gh-aw/actions/setup@$pin|"
+          diff -u <(git show "HEAD:$lock" | sed -e "$normalize") <(sed -e "$normalize" "$lock")
+      - name: Rehearse the independent handoff and rollback
+        run: |
+          set -euo pipefail
+          runtime=packages/factory-workflows/runtime/cli.mjs
+          node "$runtime" build out/handoff
+          key="$(node "$runtime" check out/handoff)"
+          FORGE_CHECKER_PUBLIC_KEY="$key" node "$runtime" deliver out/handoff
+          node "$runtime" rehearse out/repair --fail-first-observation
+      - name: Resolve and plan both immutable APMX packages
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          CATALOG_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CATALOG_REF" =~ ^[0-9a-f]{40}$ ]]
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error 'https://github.com/danielmeppiel/apmx/releases/download/v0.8.0/apmx-0.8.0-linux-x86_64.tar.gz' -o "$scratch/apmx.tar.gz"
+          printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
+          apmx="$(find "$scratch" -type f -name apmx -print -quit)"
+          mkdir "$scratch/copilot"
+          copilot_package="$(npm pack --ignore-scripts --silent --pack-destination "$scratch" @github/copilot-linux-x64@1.0.107)"
+          tar -xzf "$scratch/$copilot_package" -C "$scratch/copilot"
+          export PATH="$scratch/copilot/package:$PATH"
+          cp -R examples/reference "$scratch/workspace"
+          cd "$scratch/workspace"
+          for package in acceptance repair-acceptance; do
+            "$apmx" --from "richgo/forge-kit-skills/packages/$package#$CATALOG_REF" --plan
+          done

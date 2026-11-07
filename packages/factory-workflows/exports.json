@@ -1,13 +1,9 @@
 {
   "version": 1,
   "exports": [
-    {
-      "kind": "gh-aw-import",
-      "path": "workflows/shared/forge-github-read.md"
-    },
-    {
-      "kind": "apmx-contract",
-      "path": "contracts/repair-plan.contract.md"
-    }
+    { "kind": "gh-aw-import", "path": "workflows/shared/forge-github-read.md" },
+    { "kind": "apmx-contract", "path": "contracts/repair-plan.contract.md" },
+    { "kind": "gh-aw-workflow", "path": "workflows/forge-reference.md" },
+    { "kind": "lifecycle-runtime", "path": "runtime/lifecycle.mjs" }
   ]
 }

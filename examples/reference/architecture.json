@@ -1,0 +1,13 @@
+{
+  "$schema": "https://calm.finos.org/release/1.2/meta/calm.json",
+  "nodes": [
+    { "unique-id": "monitor", "node-type": "service", "name": "Monitor", "description": "Requests readiness." },
+    { "unique-id": "readiness", "node-type": "service", "name": "Readiness", "description": "Reports readiness." }
+  ],
+  "relationships": [
+    {
+      "unique-id": "readiness-probe",
+      "relationship-type": { "connects": { "source": { "node": "monitor" }, "destination": { "node": "readiness" } } }
+    }
+  ]
+}

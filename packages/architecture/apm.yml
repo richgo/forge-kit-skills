@@ -1,0 +1,7 @@
+name: forge-kit-architecture
+version: "0.1.0"
+description: CALM architecture, requirement traceability, and a LikeC4 projection.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []
