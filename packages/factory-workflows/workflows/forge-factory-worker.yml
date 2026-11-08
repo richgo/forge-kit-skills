@@ -10,8 +10,40 @@ on:
 permissions: {}
 
 jobs:
+  assemble:
+    name: Restore the approved APM capability lock
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    outputs:
+      lock: ${{ steps.install.outputs.lock }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - id: install
+        run: |
+          set -euo pipefail
+          node factory/cli.mjs assemble --apm | diff -u apm.yml -
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error 'https://github.com/microsoft/apm/releases/download/v0.33.0/apm-linux-x86_64.tar.gz' -o "$scratch/apm.tar.gz"
+          printf '%s  %s\n' 'e6374402c74318f7c8bef97a90d8572d049fdab0dc3871492c6b0647ae9e881f' "$scratch/apm.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apm.tar.gz" -C "$scratch"
+          apm="$(find "$scratch" -type f -name apm -print -quit)"
+          mkdir "$scratch/project"
+          cp apm.yml apm.lock.yaml "$scratch/project/"
+          lock="$(sha256sum apm.lock.yaml | cut -d ' ' -f1)"
+          (
+            cd "$scratch/project"
+            "$apm" install --target copilot --frozen
+          )
+          cmp apm.lock.yaml "$scratch/project/apm.lock.yaml"
+          printf 'lock=%s\n' "$lock" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build and repair the selected story
+    needs: assemble
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -276,23 +308,24 @@ jobs:
           if-no-files-found: error
       - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release == ''
         run: node factory/pages.mjs package out release "$GITHUB_SHA"
-      - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release != ''
+      - if: github.event.inputs.website_release != ''
         run: node factory/website.mjs package out release "$GITHUB_SHA"
-      - if: github.event.inputs.publish_pages == 'true'
+      - name: Archive the independently verified release
+        if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+        run: |
+          mkdir pages-archive
+          tar -cf pages-archive/artifact.tar -C release .
+      - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: factory-release-proof
-          path: release/release.json
-          if-no-files-found: error
-      - if: github.event.inputs.publish_pages == 'true'
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
-        with:
           name: factory-pages
-          path: release
+          path: pages-archive/artifact.tar
+          retention-days: 30
+          if-no-files-found: error
 
   attest:
-    name: Sign the checked APMX evidence
-    needs: verify
+    name: Sign the checked APMX evidence and exact release archive
+    needs: [assemble, verify]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -317,10 +350,99 @@ jobs:
         with:
           receipt: verified/receipt.intoto.jsonl
 
+      - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-pages
+          path: archive
+      - name: Bind release inputs and independent results
+        if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+        env:
+          APM_LOCK: ${{ needs.assemble.outputs.lock }}
+        run: |
+          set -euo pipefail
+          [[ "$APM_LOCK" =~ ^[0-9a-f]{64}$ ]]
+          hash() { sha256sum "$1" | cut -d ' ' -f1; }
+          jq -n --arg source "$GITHUB_SHA" --arg lock "$APM_LOCK" \
+            --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
+            --arg checks "$(hash verified/requirements-verification.json)" \
+            '{source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks}' > release-predicate.json
+      - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+        id: pages-signature
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: archive/artifact.tar
+          predicate-type: https://github.com/richgo/forge-kit/attestations/pages-release/v1
+          predicate-path: release-predicate.json
+
+      - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-pages-signature
+          path: ${{ steps.pages-signature.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 30
+
+  authenticate:
+    name: Verify the signed release archive
+    if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
+    needs: attest
+    runs-on: ubuntu-24.04
+    permissions:
+      attestations: read
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-pages-signature
+          path: signature
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-verified
+          path: verified
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-pages
+          path: archive
+      - name: Authenticate the release bytes before granting deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir proof
+          signer="$(node factory/cli.mjs assemble | jq -er '.packages.orchestration | split("#")[1]')"
+          bundles=(signature/*.json)
+          test "${#bundles[@]}" -eq 1 && test -f "${bundles[0]}"
+          gh attestation verify archive/artifact.tar --repo "$GITHUB_REPOSITORY" \
+            --bundle "${bundles[0]}" \
+            --signer-workflow richgo/forge-kit-skills/.github/workflows/forge-factory-worker.yml \
+            --signer-digest "$signer" --source-ref "$GITHUB_REF" \
+            --source-digest "$GITHUB_SHA" --deny-self-hosted-runners \
+            --predicate-type https://github.com/richgo/forge-kit/attestations/pages-release/v1 \
+            --format json > proof/verified-signature.json
+          hash() { sha256sum "$1" | cut -d ' ' -f1; }
+          jq -e --arg source "$GITHUB_SHA" --arg lock "$(hash apm.lock.yaml)" \
+            --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
+            --arg checks "$(hash verified/requirements-verification.json)" \
+            'any(.[].verificationResult.statement.predicate;
+              . == {source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks})' \
+            proof/verified-signature.json > /dev/null
+          tar -xOf archive/artifact.tar ./release.json > proof/release.json
+          jq -e --arg source "$GITHUB_SHA" '.source == $source' proof/release.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-release-proof
+          path: proof/
+          if-no-files-found: error
+
   pages:
     name: Publish and observe the verified reference
     if: github.event.inputs.publish_pages == 'true'
-    needs: attest
+    needs: authenticate
     runs-on: ubuntu-24.04
     permissions:
       contents: read
