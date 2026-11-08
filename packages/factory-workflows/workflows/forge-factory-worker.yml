@@ -253,6 +253,7 @@ jobs:
           STORY: ${{ github.event.inputs.story || 'STORY-001' }}
           INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
           TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
+          USE_JEV: ${{ github.event.inputs.use_jev }}
           INJECT_FAULT: ${{ github.event.inputs.inject_fault }}
         run: |
           set -euo pipefail
@@ -277,8 +278,9 @@ jobs:
           fi
           npx --yes --package @finos/calm-cli@1.68.0 calm validate --strict -a "$inputs/architecture.json"
           npx --yes --package likec4@1.60.0 likec4 validate "$inputs"
-          if [[ "$repairs" -gt 0 ]]; then test -s out/repair-decisions.json; fi
-          node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" > out/requirements-verification.json
+          advisor=fixture-policy
+          if [[ "$USE_JEV" == true ]]; then advisor=typed-advisor; fi
+          node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" --repair-advisor "$advisor" > out/requirements-verification.json
           cp "$inputs/product-requirements.json" out/
       - name: Resolve the pinned website security policy from the trusted checkout
         if: github.event.inputs.website_release != ''
