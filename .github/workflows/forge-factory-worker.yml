@@ -25,6 +25,7 @@ jobs:
       - id: install
         run: |
           set -euo pipefail
+          node factory/cli.mjs assemble | jq -e '.pending == []' > /dev/null
           node factory/cli.mjs assemble --apm | diff -u apm.yml -
           scratch="$(mktemp -d)"
           curl --fail --location --silent --show-error 'https://github.com/microsoft/apm/releases/download/v0.33.0/apm-linux-x86_64.tar.gz' -o "$scratch/apm.tar.gz"
@@ -37,6 +38,7 @@ jobs:
           (
             cd "$scratch/project"
             "$apm" install --target copilot --frozen
+            "$apm" audit --ci
           )
           cmp apm.lock.yaml "$scratch/project/apm.lock.yaml"
           printf 'lock=%s\n' "$lock" >> "$GITHUB_OUTPUT"
@@ -46,6 +48,7 @@ jobs:
     needs: assemble
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: read
     timeout-minutes: 10
     outputs:
@@ -54,6 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          fetch-depth: 2
           persist-credentials: false
       - id: resolve
         env:
@@ -122,11 +126,21 @@ jobs:
           if [[ "$INJECT_FAULT" == true ]]; then fault=(--fault wrong-output-once); fi
           node factory/cli.mjs run out --inputs "$inputs" --story "$STORY" "${fault[@]}"
           cp "$inputs/product-requirements.json" out/
+      - name: Plan the approved Trail Desk change
+        if: github.event.inputs.website_release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_RUN: ${{ github.event.inputs.rollback_run_id }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: bash factory/plan-release.sh "$WEBSITE_RELEASE" > "$RUNNER_TEMP/impact-plan.json"
       - name: Generate the CALM model, LikeC4 view, and website from the approved release
         if: github.event.inputs.website_release != ''
         env:
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
-        run: node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out
+        run: |
+          set -euo pipefail
+          node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out
+          cp "$RUNNER_TEMP/impact-plan.json" out/
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-candidate
@@ -136,7 +150,10 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-failure-state
-          path: out/state.json
+          path: |
+            out/state.json
+            out/repair-decisions.json
+            out/rejected*.mjs
           if-no-files-found: ignore
 
   contract:
@@ -193,11 +210,13 @@ jobs:
     needs: [build, contract]
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: read
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          fetch-depth: 2
           persist-credentials: false
       - if: github.event.inputs.website_release == ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -223,6 +242,9 @@ jobs:
       - uses: ./_apmx/.github/actions/setup-from-source
         with:
           path: _apmx
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22.22.3'
       - name: Verify the readiness probe against the approved inputs
         if: github.event.inputs.website_release == ''
         env:
@@ -253,25 +275,45 @@ jobs:
               cp architecture/slice.c4 "$inputs/architecture.c4"
             fi
           fi
+          npx --yes --package @finos/calm-cli@1.68.0 calm validate --strict -a "$inputs/architecture.json"
+          npx --yes --package likec4@1.60.0 likec4 validate "$inputs"
+          if [[ "$repairs" -gt 0 ]]; then test -s out/repair-decisions.json; fi
           node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" > out/requirements-verification.json
           cp "$inputs/product-requirements.json" out/
+      - name: Resolve the pinned website security policy from the trusted checkout
+        if: github.event.inputs.website_release != ''
+        id: website-security
+        run: |
+          set -euo pipefail
+          ref="$(node factory/cli.mjs assemble | jq -er '.packages.securityReview')"
+          [[ "$ref" =~ ^richgo/forge-kit-skills/packages/security-review#[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "${ref##*#}" >> "$GITHUB_OUTPUT"
       - if: github.event.inputs.website_release != ''
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          node-version: '22.22.3'
+          repository: richgo/forge-kit-skills
+          ref: ${{ steps.website-security.outputs.sha }}
+          path: _security
+          persist-credentials: false
       - name: Validate CALM and LikeC4 and replay the approved website stories in Chromium
         if: github.event.inputs.website_release != ''
         env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_RUN: ${{ github.event.inputs.rollback_run_id }}
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
           PACKAGE: ${{ needs.build.outputs.package }}
         run: |
           set -euo pipefail
           [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.websiteChecking')" ]]
-          npx --yes --package @finos/calm-cli@1.68.0 calm validate -a out/architecture.json
+          bash factory/plan-release.sh "$WEBSITE_RELEASE" > "$RUNNER_TEMP/independent-plan.json"
+          unset GH_TOKEN
+          cmp "$RUNNER_TEMP/independent-plan.json" out/impact-plan.json
+          npx --yes --package @finos/calm-cli@1.68.0 calm validate --strict -a out/architecture.json
           npx --yes --package likec4@1.60.0 likec4 validate out
           npm install --prefix "$RUNNER_TEMP/browser" --no-fund --no-audit playwright@1.56.1
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
           export FORGE_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright/index.mjs"
+          export FORGE_SECURITY_PACKAGE="_security/packages/security-review"
           node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out > out/browser-evidence.json
       - name: Independently replay the APMX contract on the checked build
         env:
@@ -297,9 +339,10 @@ jobs:
           cp -r "${receipts[0]}" "$(dirname "${receipts[0]}")/evidence" verified/
           cp out/requirements-verification.json verified/
           if [[ -n "$WEBSITE_RELEASE" ]]; then
-            cp out/{architecture.json,architecture.c4,browser-evidence.json} verified/
+            cp out/{architecture.json,architecture.c4,browser-evidence.json,security-verification.json,impact-plan.json} verified/
           else
             cp out/receipt.json verified/
+            if [[ -f out/repair-decisions.json ]]; then cp out/repair-decisions.json verified/; fi
           fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -358,15 +401,25 @@ jobs:
       - name: Bind release inputs and independent results
         if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
         env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
           APM_LOCK: ${{ needs.assemble.outputs.lock }}
         run: |
           set -euo pipefail
           [[ "$APM_LOCK" =~ ^[0-9a-f]{64}$ ]]
           hash() { sha256sum "$1" | cut -d ' ' -f1; }
+          optional_hash() { if [[ -f "$1" ]]; then hash "$1"; fi; }
+          browser="$(optional_hash verified/browser-evidence.json)"
+          security="$(optional_hash verified/security-verification.json)"
+          plan="$(optional_hash verified/impact-plan.json)"
+          repairs="$(optional_hash verified/repair-decisions.json)"
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            [[ "$browser" =~ ^[0-9a-f]{64}$ && "$security" =~ ^[0-9a-f]{64}$ && "$plan" =~ ^[0-9a-f]{64}$ ]]
+          fi
           jq -n --arg source "$GITHUB_SHA" --arg lock "$APM_LOCK" \
             --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
             --arg checks "$(hash verified/requirements-verification.json)" \
-            '{source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks}' > release-predicate.json
+            --arg browser "$browser" --arg security "$security" --arg repairs "$repairs" --arg plan "$plan" \
+            '{source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan}' > release-predicate.json
       - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
         id: pages-signature
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
@@ -410,6 +463,8 @@ jobs:
           path: archive
       - name: Authenticate the release bytes before granting deployment
         env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+          PUBLISH_PAGES: ${{ github.event.inputs.publish_pages }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -417,22 +472,45 @@ jobs:
           signer="$(node factory/cli.mjs assemble | jq -er '.packages.orchestration | split("#")[1]')"
           bundles=(signature/*.json)
           test "${#bundles[@]}" -eq 1 && test -f "${bundles[0]}"
-          gh attestation verify archive/artifact.tar --repo "$GITHUB_REPOSITORY" \
-            --bundle "${bundles[0]}" \
-            --signer-workflow richgo/forge-kit-skills/.github/workflows/forge-factory-worker.yml \
-            --signer-digest "$signer" --source-ref "$GITHUB_REF" \
-            --source-digest "$GITHUB_SHA" --deny-self-hosted-runners \
-            --predicate-type https://github.com/richgo/forge-kit/attestations/pages-release/v1 \
-            --format json > proof/verified-signature.json
+          verify=(
+            --repo "$GITHUB_REPOSITORY" --bundle "${bundles[0]}"
+            --signer-workflow richgo/forge-kit-skills/.github/workflows/forge-factory-worker.yml
+            --signer-digest "$signer" --source-ref "$GITHUB_REF"
+            --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+            --predicate-type https://github.com/richgo/forge-kit/attestations/pages-release/v1
+            --format json
+          )
+          gh attestation verify archive/artifact.tar "${verify[@]}" > proof/verified-signature.json
           hash() { sha256sum "$1" | cut -d ' ' -f1; }
+          optional_hash() { if [[ -f "$1" ]]; then hash "$1"; fi; }
+          browser="$(optional_hash verified/browser-evidence.json)"
+          security="$(optional_hash verified/security-verification.json)"
+          plan="$(optional_hash verified/impact-plan.json)"
+          repairs="$(optional_hash verified/repair-decisions.json)"
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            [[ "$browser" =~ ^[0-9a-f]{64}$ && "$security" =~ ^[0-9a-f]{64}$ && "$plan" =~ ^[0-9a-f]{64}$ ]]
+          fi
           jq -e --arg source "$GITHUB_SHA" --arg lock "$(hash apm.lock.yaml)" \
             --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
             --arg checks "$(hash verified/requirements-verification.json)" \
+            --arg browser "$browser" --arg security "$security" --arg repairs "$repairs" --arg plan "$plan" \
             'any(.[].verificationResult.statement.predicate;
-              . == {source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks})' \
+              . == {source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan})' \
             proof/verified-signature.json > /dev/null
           tar -xOf archive/artifact.tar ./release.json > proof/release.json
           jq -e --arg source "$GITHUB_SHA" '.source == $source' proof/release.json
+          if [[ "$PUBLISH_PAGES" != true ]]; then
+            cp archive/artifact.tar changed.tar
+            printf 'unapproved bytes' >> changed.tar
+            if gh attestation verify changed.tar "${verify[@]}" > /dev/null 2> proof/changed-archive-rejection.log; then
+              echo '::error::Signature verification accepted a changed archive.'
+              exit 1
+            fi
+            if gh attestation verify archive/artifact.tar "${verify[@]}" --signer-digest "$GITHUB_SHA" > /dev/null 2> proof/wrong-signer-rejection.log; then
+              echo '::error::Signature verification accepted the wrong signer revision.'
+              exit 1
+            fi
+          fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-release-proof
@@ -445,10 +523,12 @@ jobs:
     needs: authenticate
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+      attestations: read
       contents: read
       pages: write
       id-token: write
-    timeout-minutes: 10
+    timeout-minutes: 25
     concurrency:
       group: github-pages
       cancel-in-progress: false
@@ -463,12 +543,60 @@ jobs:
         with:
           name: factory-release-proof
           path: proof
+      - name: Prepare the last known-good Trail Desk release
+        id: previous
+        if: github.event.inputs.website_release == 'current'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_RUN: ${{ github.event.inputs.rollback_run_id }}
+          NO_ROLLBACK_OVERRIDE: ${{ github.event.inputs.allow_publish_without_rollback }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PRIOR_RUN" ]]; then
+            [[ "$NO_ROLLBACK_OVERRIDE" == true ]] || { echo '::error::Supply the last known-good release run ID.'; exit 1; }
+            echo '::warning::Operator approved a release without an authenticated rollback archive.'
+            exit 0
+          fi
+          [[ "$NO_ROLLBACK_OVERRIDE" != true && "$PRIOR_RUN" =~ ^[1-9][0-9]*$ && "$PRIOR_RUN" != "$GITHUB_RUN_ID" ]]
+          prior_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRIOR_RUN" | jq -er '
+            select(.path == ".github/workflows/factory-e2e.yml" and .head_branch == "main" and
+              .event == "workflow_dispatch" and .conclusion == "success") | .head_sha')"
+          [[ "$prior_sha" =~ ^[0-9a-f]{40}$ ]]
+          prior_signer="$(gh api "repos/$GITHUB_REPOSITORY/contents/factory/packages.json?ref=$prior_sha" --jq .content |
+            base64 --decode | jq -er '.capabilities.orchestration |
+              select(.repository == "richgo/forge-kit-skills" and .workflow == ".github/workflows/forge-factory.lock.yml") | .ref')"
+          [[ "$prior_signer" =~ ^[0-9a-f]{40}$ ]]
+          gh run download "$PRIOR_RUN" --repo "$GITHUB_REPOSITORY" --name factory-pages --dir previous/archive
+          gh run download "$PRIOR_RUN" --repo "$GITHUB_REPOSITORY" --name factory-pages-signature --dir previous/signature
+          gh run download "$PRIOR_RUN" --repo "$GITHUB_REPOSITORY" --name factory-pages-observation --dir previous/observation
+          bundles=(previous/signature/*.json)
+          test "${#bundles[@]}" -eq 1 && test -f "${bundles[0]}"
+          gh attestation verify previous/archive/artifact.tar --repo "$GITHUB_REPOSITORY" \
+            --bundle "${bundles[0]}" \
+            --signer-workflow richgo/forge-kit-skills/.github/workflows/forge-factory-worker.yml \
+            --signer-digest "$prior_signer" --source-ref refs/heads/main --source-digest "$prior_sha" \
+            --deny-self-hosted-runners --predicate-type https://github.com/richgo/forge-kit/attestations/pages-release/v1 \
+            --format json > proof/previous-verified-signature.json
+          tar -xOf previous/archive/artifact.tar ./release.json > previous/release.json
+          jq -e --arg source "$prior_sha" '.source == $source' previous/release.json
+          page_url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)"
+          jq -e --arg url "$page_url" --slurpfile prior previous/release.json '
+            .observed == "passed" and .url == $url and del(.url, .observed) == $prior[0]' previous/observation/observed.json
+          node factory/website.mjs probe "$page_url" previous/release.json > proof/previous-observation.json
+          printf 'prepared=true\nrun=%s\n' "$PRIOR_RUN" >> "$GITHUB_OUTPUT"
+      - if: steps.previous.outputs.prepared == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-pages-rollback
+          path: previous/archive/artifact.tar
+          if-no-files-found: error
       - id: publish
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
         with:
           artifact_name: factory-pages
           timeout: 240000
       - name: Observe the deployed release
+        id: observe
         env:
           PAGE_URL: ${{ steps.publish.outputs.page_url }}
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
@@ -482,4 +610,41 @@ jobs:
         with:
           name: factory-pages-observation
           path: proof/observed.json
+          if-no-files-found: error
+      - name: Restore the last known-good Pages archive
+        id: restore
+        if: ${{ failure() && steps.previous.outputs.prepared == 'true' && (steps.publish.outcome == 'failure' || steps.observe.outcome == 'failure') }}
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+        with:
+          artifact_name: factory-pages-rollback
+          timeout: 240000
+      - name: Independently observe the restored release
+        id: observe-rollback
+        if: ${{ failure() && steps.restore.outcome == 'success' }}
+        env:
+          PAGE_URL: ${{ steps.restore.outputs.page_url }}
+        run: node factory/website.mjs probe "$PAGE_URL" previous/release.json > proof/rollback-observation.json
+      - name: Record the deployment failure and recovery outcome
+        if: ${{ failure() }}
+        env:
+          PUBLISH: ${{ steps.publish.outcome }}
+          OBSERVE: ${{ steps.observe.outcome }}
+          PRIOR_RUN: ${{ steps.previous.outputs.run }}
+          RESTORE: ${{ steps.restore.outcome }}
+          RESTORED_PROBE: ${{ steps.observe-rollback.outcome }}
+        run: |
+          mkdir -p proof
+          jq -n --arg publish "$PUBLISH" --arg observe "$OBSERVE" --arg priorRun "$PRIOR_RUN" \
+            --arg restore "$RESTORE" --arg restoredProbe "$RESTORED_PROBE" \
+            '{publish: $publish, observe: $observe, priorRun: $priorRun, restore: $restore, restoredProbe: $restoredProbe}' > proof/recovery.json
+          if [[ "$RESTORED_PROBE" == success ]]; then
+            echo '::error::Candidate release failed. The previous release was restored and observed.'
+          else
+            echo '::error::Candidate release failed. An operator must verify the active release.'
+          fi
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-pages-recovery
+          path: proof/
           if-no-files-found: error

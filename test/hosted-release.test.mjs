@@ -46,3 +46,35 @@ test('attestation verification pins the reviewed workflow revision and compares 
   assert.match(gate, /hash verified\/requirements-verification\.json/);
   assert.match(gate, /any\(\.\[\]\.verificationResult\.statement\.predicate/);
 });
+
+test('production recovery authenticates and observes the prior release before publishing', () => {
+  const pages = workflow.split('\n  pages:\n')[1];
+  const prepare = pages.indexOf('gh attestation verify previous/archive/artifact.tar');
+  const liveProbe = pages.indexOf('previous/release.json > proof/previous-observation.json');
+  const upload = pages.indexOf('name: factory-pages-rollback');
+  const publish = pages.indexOf('- id: publish');
+  assert.ok(prepare >= 0 && prepare < liveProbe && liveProbe < upload && upload < publish);
+  assert.match(pages, /--source-ref refs\/heads\/main --source-digest "\$prior_sha"/);
+  assert.match(pages, /\.path == "\.github\/workflows\/factory-e2e\.yml"/);
+  assert.match(pages, /\[\[ "\$NO_ROLLBACK_OVERRIDE" == true \]\]/);
+});
+
+test('failed deployment or observation triggers one restoration and records its real probe', () => {
+  const pages = workflow.split('\n  pages:\n')[1];
+  assert.equal(pages.match(/artifact_name: factory-pages-rollback/g)?.length, 1);
+  assert.match(pages, /if: \$\{\{ failure\(\) && steps\.previous\.outputs\.prepared == 'true' && \(steps\.publish\.outcome == 'failure' \|\| steps\.observe\.outcome == 'failure'\) \}\}/);
+  assert.match(pages, /steps\.restore\.outcome == 'success'/);
+  assert.match(pages, /node factory\/website\.mjs probe "\$PAGE_URL" previous\/release\.json > proof\/rollback-observation\.json/);
+  assert.match(pages, /name: factory-pages-recovery/);
+});
+
+test('website scope is independently reproduced and security evidence is required before signing', () => {
+  const producer = workflow.split('\n  build:\n')[1].split('\n  contract:\n')[0];
+  const verifier = workflow.split('\n  verify:\n')[1].split('\n  attest:\n')[0];
+  const signer = workflow.split('\n  attest:\n')[1].split('\n  authenticate:\n')[0];
+  assert.ok(producer.indexOf('bash factory/plan-release.sh') < producer.indexOf('node factory/website.mjs build'));
+  assert.match(verifier, /cmp "\$RUNNER_TEMP\/independent-plan\.json" out\/impact-plan\.json/);
+  assert.match(verifier, /export FORGE_SECURITY_PACKAGE="_security\/packages\/security-review"/);
+  assert.match(signer, /securityVerification: \$security/);
+  assert.match(signer, /impactPlan: \$plan/);
+});

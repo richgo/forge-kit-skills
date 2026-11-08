@@ -19,7 +19,13 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22.22.3'
-      - run: node --test
+      - name: Run contracts and the real Chromium security suite
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/security" --no-fund --no-audit playwright@1.56.1
+          "$RUNNER_TEMP/security/node_modules/.bin/playwright" install chromium
+          export FORGE_PLAYWRIGHT="$RUNNER_TEMP/security/node_modules/playwright/index.mjs"
+          node --test
       - name: Validate architecture and view with upstream tools
         run: |
           npx --yes --package @finos/calm-cli@1.68.0 calm validate -a examples/reference/architecture.json
@@ -31,12 +37,14 @@ jobs:
           curl --fail --location --silent --show-error 'https://github.com/github/gh-aw/releases/download/v1.0.1/linux-amd64' -o "$compiler"
           printf '%s  %s\n' '746d0b41d5fb87e2c010b8ac23a464436bb745ff89fbd19a3456431942c37652' "$compiler" | sha256sum --check
           chmod +x "$compiler"
-          "$compiler" compile forge-reference --no-check-update --no-logo --gh-aw-ref 0627fdbe4beb5f3b71aa569f8d97150b87f2111a
-          lock=.github/workflows/forge-reference.lock.yml
           pin=0627fdbe4beb5f3b71aa569f8d97150b87f2111a
           # The compiler adds a redundant setup-ref comment on Linux.
           normalize="s|github/gh-aw/actions/setup@$pin # $pin\$|github/gh-aw/actions/setup@$pin|"
-          diff -u <(git show "HEAD:$lock" | sed -e "$normalize") <(sed -e "$normalize" "$lock")
+          for workflow in forge-reference forge-factory; do
+            "$compiler" compile "$workflow" --no-check-update --no-logo --gh-aw-ref "$pin"
+            lock=".github/workflows/$workflow.lock.yml"
+            diff -u <(git show "HEAD:$lock" | sed -e "$normalize") <(sed -e "$normalize" "$lock")
+          done
       - name: Rehearse the independent handoff and rollback
         run: |
           set -euo pipefail

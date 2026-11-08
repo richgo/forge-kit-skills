@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "exports": [
+    { "kind": "checker", "path": "checks/website-security.mjs" }
+  ]
+}

@@ -1,6 +1,6 @@
 name: forge-kit-security-review
 version: "0.1.0"
-description: Read-only security triage grounded in scanner and source evidence.
+description: Read-only security triage and independent static website verification.
 targets:
   - copilot
 dependencies:
