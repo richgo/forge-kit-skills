@@ -276,7 +276,7 @@ jobs:
               cp architecture/slice.c4 "$inputs/architecture.c4"
             fi
           fi
-          npx --yes --package @finos/calm-cli@1.68.0 calm validate --strict -a "$inputs/architecture.json"
+          bash factory/validate-calm.sh "$inputs/architecture.json"
           npx --yes --package likec4@1.60.0 likec4 validate "$inputs"
           advisor=fixture-policy
           if [[ "$USE_JEV" == true ]]; then advisor=typed-advisor; fi
@@ -365,7 +365,7 @@ jobs:
         with:
           name: factory-pages
           path: pages-archive/artifact.tar
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: error
 
   attest:
@@ -436,7 +436,7 @@ jobs:
           name: factory-pages-signature
           path: ${{ steps.pages-signature.outputs.bundle-path }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
   authenticate:
     name: Verify the signed release archive
