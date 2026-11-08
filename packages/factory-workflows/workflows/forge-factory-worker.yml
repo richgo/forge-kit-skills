@@ -19,9 +19,6 @@ jobs:
     outputs:
       package: ${{ steps.resolve.outputs.package }}
       package_sha: ${{ steps.resolve.outputs.package_sha }}
-      story: ${{ steps.resolve.outputs.story }}
-      input_directory: ${{ steps.resolve.outputs.input_directory }}
-      topology: ${{ steps.resolve.outputs.topology }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -32,12 +29,14 @@ jobs:
           INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
           TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
           PUBLISH_PAGES: ${{ github.event.inputs.publish_pages }}
+          PUBLIC_INPUTS: ${{ github.event.inputs.public_inputs }}
         run: |
           set -euo pipefail
           [[ "$STORY" =~ ^STORY-[0-9]+$ ]]
           [[ "$TOPOLOGY" == direct || "$TOPOLOGY" == delegated ]]
           if [[ -n "$INPUT_DIRECTORY" ]]; then
             [[ "$INPUT_DIRECTORY" =~ ^[a-zA-Z0-9_/-]+$ && "$INPUT_DIRECTORY" != /* ]]
+            [[ "$PUBLIC_INPUTS" == true ]] || { echo '::error::Confirm that the tracked inputs are public and safe to send to Copilot and retain in run artifacts.'; exit 1; }
             [[ "$PUBLISH_PAGES" != true ]] || { echo '::error::Pages accepts only the public reference fixture.'; exit 1; }
           fi
           package="$(node factory/cli.mjs assemble | jq -er '.packages.skills')"
@@ -86,6 +85,12 @@ jobs:
           name: factory-candidate
           path: out/
           if-no-files-found: error
+      - if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-failure-state
+          path: out/state.json
+          if-no-files-found: ignore
 
   contract:
     name: Run the APMX product story contract
@@ -102,6 +107,7 @@ jobs:
       - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           version: '0.8.0'
+          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
       - run: npm install --global --no-fund --no-audit @github/copilot@1.0.107
       - name: Produce contract output for the actual candidate
         env:
@@ -153,18 +159,24 @@ jobs:
       - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           version: '0.8.0'
+          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
       - name: Verify against the approved inputs and bind both checks to the same build
         env:
           FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
           PACKAGE: ${{ needs.build.outputs.package }}
-          STORY: ${{ needs.build.outputs.story }}
-          INPUT_DIRECTORY: ${{ needs.build.outputs.input_directory }}
-          TOPOLOGY: ${{ needs.build.outputs.topology }}
+          STORY: ${{ github.event.inputs.story || 'STORY-001' }}
+          INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
+          TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
+          INJECT_FAULT: ${{ github.event.inputs.inject_fault }}
         run: |
           set -euo pipefail
           inputs="$RUNNER_TEMP/story-inputs"
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$inputs" "$workspace" verified
+          [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.skills')" ]]
+          repairs=0
+          if [[ "$INJECT_FAULT" == true ]]; then repairs=1; fi
+          jq -e --argjson repairs "$repairs" '.predicate.repairs == $repairs' out/receipt.json > /dev/null
           if [[ -n "$INPUT_DIRECTORY" ]]; then
             for file in product-requirements.json architecture.json architecture.c4; do
               git show "HEAD:$INPUT_DIRECTORY/$file" > "$inputs/$file"
@@ -227,6 +239,7 @@ jobs:
       - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           version: '0.8.0'
+          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
       - uses: danielmeppiel/apmx/.github/actions/attest@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           receipt: verified/receipt.intoto.jsonl
