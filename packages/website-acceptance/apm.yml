@@ -1,0 +1,7 @@
+name: forge-kit-website-acceptance
+version: "0.1.0"
+description: Trace a checked public website to approved requirements and CALM.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []

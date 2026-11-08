@@ -6,7 +6,7 @@ const source = path => new URL('../' + path, import.meta.url);
 const read = path => readFile(source(path), 'utf8');
 
 test('all new package exports name tracked source files', async () => {
-  for (const name of ['acceptance', 'architecture', 'delivery', 'factory-workflows', 'repair-acceptance']) {
+  for (const name of ['acceptance', 'architecture', 'delivery', 'factory-workflows', 'repair-acceptance', 'website-acceptance']) {
     const directory = 'packages/' + name + '/';
     assert.match(await read(directory + 'apm.yml'), /^version: "\d+\.\d+\.\d+"$/m);
     const { version, exports } = JSON.parse(await read(directory + 'exports.json'));

@@ -30,6 +30,7 @@ jobs:
           TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
           PUBLISH_PAGES: ${{ github.event.inputs.publish_pages }}
           PUBLIC_INPUTS: ${{ github.event.inputs.public_inputs }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
         run: |
           set -euo pipefail
           [[ "$STORY" =~ ^STORY-[0-9]+$ ]]
@@ -39,17 +40,26 @@ jobs:
             [[ "$PUBLIC_INPUTS" == true ]] || { echo '::error::Confirm that the tracked inputs are public and safe to send to Copilot and retain in run artifacts.'; exit 1; }
             [[ "$PUBLISH_PAGES" != true ]] || { echo '::error::Pages accepts only the public reference fixture.'; exit 1; }
           fi
-          package="$(node factory/cli.mjs assemble | jq -er '.packages.skills')"
-          [[ "$package" =~ ^richgo/forge-kit-skills/packages/requirements#[0-9a-f]{40}$ ]]
+          case "$WEBSITE_RELEASE" in
+            '') role=skills; package_name=requirements ;;
+            baseline|step-free)
+              [[ -z "$INPUT_DIRECTORY" ]] || { echo '::error::Website releases use their reviewed product document.'; exit 1; }
+              role=websiteChecking; package_name=website-acceptance ;;
+            *) echo '::error::Unknown website release.'; exit 1 ;;
+          esac
+          package="$(node factory/cli.mjs assemble | jq -er --arg role "$role" '.packages[$role]')"
+          [[ "$package" =~ ^richgo/forge-kit-skills/packages/"$package_name"#[0-9a-f]{40}$ ]]
           printf 'package=%s\npackage_sha=%s\nstory=%s\ninput_directory=%s\ntopology=%s\n' \
             "$package" "${package##*#}" "$STORY" "$INPUT_DIRECTORY" "$TOPOLOGY" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - if: github.event.inputs.website_release == ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: richgo/forge-kit-skills
           ref: ${{ steps.resolve.outputs.package_sha }}
           path: _requirements
           persist-credentials: false
       - name: Run the factory with approved product and architecture inputs
+        if: github.event.inputs.website_release == ''
         env:
           FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
           FORGE_JEV_TOKEN: ${{ github.event.inputs.use_jev == 'true' && secrets.FORGE_JEV_TOKEN || '' }}
@@ -80,6 +90,11 @@ jobs:
           if [[ "$INJECT_FAULT" == true ]]; then fault=(--fault wrong-output-once); fi
           node factory/cli.mjs run out --inputs "$inputs" --story "$STORY" "${fault[@]}"
           cp "$inputs/product-requirements.json" out/
+      - name: Generate the CALM model, LikeC4 view, and website from the approved release
+        if: github.event.inputs.website_release != ''
+        env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-candidate
@@ -113,11 +128,16 @@ jobs:
         env:
           PACKAGE: ${{ needs.build.outputs.package }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
         run: |
           set -euo pipefail
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$workspace"
-          cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{product-requirements.json,architecture.json,index.html} "$workspace/"
+          else
+            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+          fi
           cd "$workspace"
           apmx --from "$PACKAGE" --on copilot --allow-host-access --allow-unproven-inputs
           receipts=(.apm/*/*/receipt.intoto.jsonl)
@@ -142,7 +162,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - if: github.event.inputs.website_release == ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: richgo/forge-kit-skills
           ref: ${{ needs.build.outputs.package_sha }}
@@ -160,7 +181,8 @@ jobs:
         with:
           version: '0.8.0'
           sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
-      - name: Verify against the approved inputs and bind both checks to the same build
+      - name: Verify the readiness probe against the approved inputs
+        if: github.event.inputs.website_release == ''
         env:
           FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
           PACKAGE: ${{ needs.build.outputs.package }}
@@ -171,8 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           inputs="$RUNNER_TEMP/story-inputs"
-          workspace="$RUNNER_TEMP/factory-story"
-          mkdir "$inputs" "$workspace" verified
+          mkdir "$inputs"
           [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.skills')" ]]
           repairs=0
           if [[ "$INJECT_FAULT" == true ]]; then repairs=1; fi
@@ -192,7 +213,37 @@ jobs:
           fi
           node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" > out/requirements-verification.json
           cp "$inputs/product-requirements.json" out/
-          cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+      - if: github.event.inputs.website_release != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22.22.3'
+      - name: Validate CALM and LikeC4 and replay the approved website stories in Chromium
+        if: github.event.inputs.website_release != ''
+        env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+          PACKAGE: ${{ needs.build.outputs.package }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.websiteChecking')" ]]
+          npx --yes --package @finos/calm-cli@1.68.0 calm validate -a out/architecture.json
+          npx --yes --package likec4@1.60.0 likec4 validate out
+          npm install --prefix "$RUNNER_TEMP/browser" --no-fund --no-audit playwright@1.56.1
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
+          export FORGE_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright/index.mjs"
+          node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out > out/browser-evidence.json
+      - name: Independently replay the APMX contract on the checked build
+        env:
+          PACKAGE: ${{ needs.build.outputs.package }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/factory-story"
+          mkdir "$workspace" verified
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{product-requirements.json,architecture.json,index.html} "$workspace/"
+          else
+            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+          fi
           (
             cd "$workspace"
             apmx check "$RUNNER_TEMP/producer-receipt" --from "$PACKAGE"
@@ -202,14 +253,21 @@ jobs:
           test -f "${receipts[0]}"
           cmp <(jq -S . out/requirements-verification.json) <(jq -S . "$(dirname "${receipts[0]}")/outputs/requirements-verification.json")
           cp -r "${receipts[0]}" "$(dirname "${receipts[0]}")/evidence" verified/
-          cp out/{requirements-verification.json,receipt.json} verified/
+          cp out/requirements-verification.json verified/
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{architecture.json,architecture.c4,browser-evidence.json} verified/
+          else
+            cp out/receipt.json verified/
+          fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-verified
           path: verified/
           if-no-files-found: error
-      - if: github.event.inputs.publish_pages == 'true'
+      - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release == ''
         run: node factory/pages.mjs package out release "$GITHUB_SHA"
+      - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release != ''
+        run: node factory/website.mjs package out release "$GITHUB_SHA"
       - if: github.event.inputs.publish_pages == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -273,9 +331,16 @@ jobs:
         with:
           artifact_name: factory-pages
           timeout: 240000
-      - env:
+      - name: Observe the deployed release
+        env:
           PAGE_URL: ${{ steps.publish.outputs.page_url }}
-        run: node factory/pages.mjs probe "$PAGE_URL" proof/release.json > proof/observed.json
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            node factory/website.mjs probe "$PAGE_URL" proof/release.json > proof/observed.json
+          else
+            node factory/pages.mjs probe "$PAGE_URL" proof/release.json > proof/observed.json
+          fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: factory-pages-observation
