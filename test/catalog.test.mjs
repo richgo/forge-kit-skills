@@ -35,3 +35,11 @@ test('standalone APMX build uses the same CALM checker as the architecture packa
   assert.equal(await read('packages/acceptance/checks/architecture.mjs'),
     await read('packages/architecture/checks/architecture.mjs'));
 });
+
+test('the packaged factory orchestrator exports its callable worker and matches the installed sources', async () => {
+  const catalog = JSON.parse(await read('packages/factory-workflows/exports.json'));
+  for (const name of ['forge-factory.md', 'forge-factory-worker.yml']) {
+    assert.ok(catalog.exports.some(entry => entry.path === 'workflows/' + name), name + ' is not exported');
+    assert.equal(await read('.github/workflows/' + name), await read('packages/factory-workflows/workflows/' + name));
+  }
+});

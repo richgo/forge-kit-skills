@@ -4,6 +4,8 @@
     { "kind": "gh-aw-import", "path": "workflows/shared/forge-github-read.md" },
     { "kind": "apmx-contract", "path": "contracts/repair-plan.contract.md" },
     { "kind": "gh-aw-workflow", "path": "workflows/forge-reference.md" },
+    { "kind": "gh-aw-workflow", "path": "workflows/forge-factory.md" },
+    { "kind": "github-workflow", "path": "workflows/forge-factory-worker.yml" },
     { "kind": "lifecycle-runtime", "path": "runtime/lifecycle.mjs" }
   ]
 }
