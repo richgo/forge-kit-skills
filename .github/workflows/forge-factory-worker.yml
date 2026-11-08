@@ -119,10 +119,15 @@ jobs:
         with:
           name: factory-candidate
           path: out
-      - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          version: '0.8.0'
-          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
       - run: npm install --global --no-fund --no-audit @github/copilot@1.0.107
       - name: Produce contract output for the actual candidate
         env:
@@ -177,10 +182,15 @@ jobs:
         with:
           name: factory-contract-producer
           path: ${{ runner.temp }}/producer-receipt
-      - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          version: '0.8.0'
-          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
       - name: Verify the readiness probe against the approved inputs
         if: github.event.inputs.website_release == ''
         env:
@@ -294,10 +304,15 @@ jobs:
         with:
           name: factory-verified
           path: verified
-      - uses: danielmeppiel/apmx/.github/actions/setup@fae2067a0dc6ff07beda714015ff9e648f41ce63
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          version: '0.8.0'
-          sha256: 524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
       - uses: danielmeppiel/apmx/.github/actions/attest@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           receipt: verified/receipt.intoto.jsonl
