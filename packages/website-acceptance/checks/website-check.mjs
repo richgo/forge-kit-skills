@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-const [requirements, architecture, site, report] = await Promise.all([
-  'product-requirements.json', 'architecture.json', 'index.html', 'requirements-verification.json',
+const [requirements, architecture, view, site, report] = await Promise.all([
+  'product-requirements.json', 'architecture.json', 'architecture.c4', 'index.html', 'requirements-verification.json',
 ].map(file => readFile(file)));
 const digest = value => createHash('sha256').update(value).digest('hex');
 const nodes = new Set(JSON.parse(architecture).nodes.map(node => node['unique-id']));
@@ -19,6 +19,7 @@ assert.equal(new Set(acceptance).size, acceptance.length);
 assert.deepEqual(JSON.parse(report), {
   requirementsSha256: digest(requirements),
   architectureSha256: digest(architecture),
+  viewSha256: digest(view),
   siteSha256: digest(site),
   acceptance,
 });

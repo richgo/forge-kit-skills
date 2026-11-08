@@ -134,7 +134,7 @@ jobs:
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$workspace"
           if [[ -n "$WEBSITE_RELEASE" ]]; then
-            cp out/{product-requirements.json,architecture.json,index.html} "$workspace/"
+            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html} "$workspace/"
           else
             cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
           fi
@@ -240,7 +240,7 @@ jobs:
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$workspace" verified
           if [[ -n "$WEBSITE_RELEASE" ]]; then
-            cp out/{product-requirements.json,architecture.json,index.html} "$workspace/"
+            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html} "$workspace/"
           else
             cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
           fi

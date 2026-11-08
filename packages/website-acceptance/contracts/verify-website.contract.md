@@ -2,6 +2,7 @@
 needs:
   - product-requirements.json
   - architecture.json
+  - architecture.c4
   - index.html
 produces: requirements-verification.json
 verify:
@@ -13,6 +14,7 @@ exact input bytes (lowercase hexadecimal):
 
 - requirementsSha256 for product-requirements.json
 - architectureSha256 for architecture.json
+- viewSha256 for architecture.c4
 - siteSha256 for index.html
 - acceptance, an array of acceptance IDs in epic, feature, story, and criterion order
 
