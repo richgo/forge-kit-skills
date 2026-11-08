@@ -42,7 +42,7 @@ jobs:
           fi
           case "$WEBSITE_RELEASE" in
             '') role=skills; package_name=requirements ;;
-            baseline|step-free)
+            baseline|step-free|current)
               [[ -z "$INPUT_DIRECTORY" ]] || { echo '::error::Website releases use their reviewed product document.'; exit 1; }
               role=websiteChecking; package_name=website-acceptance ;;
             *) echo '::error::Unknown website release.'; exit 1 ;;
