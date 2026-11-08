@@ -9,15 +9,28 @@ verify:
   website-trace: node checks/website-check.mjs
 ---
 
-Write requirements-verification.json with these fields, using SHA-256 of the
-exact input bytes (lowercase hexadecimal):
+Run the following shell command now in the working directory that contains
+the four input files. Execute it with the shell tool so it actually creates
+the required deliverable. A chat response or a suggested command alone
+does not deliver the file. Leave the input files unchanged.
 
-- requirementsSha256 for product-requirements.json
-- architectureSha256 for architecture.json
-- viewSha256 for architecture.c4
-- siteSha256 for index.html
-- acceptance, an array of acceptance IDs in epic, feature, story, and criterion order
+```sh
+node -e '
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+const digest = path => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+const spec = JSON.parse(fs.readFileSync("product-requirements.json", "utf8"));
+const acceptance = spec.epics.flatMap(epic => epic.features.flatMap(feature => feature.stories.flatMap(story => story.acceptanceCriteria.map(check => check.id))));
+fs.writeFileSync("requirements-verification.json", JSON.stringify({
+  requirementsSha256: digest("product-requirements.json"),
+  architectureSha256: digest("architecture.json"),
+  viewSha256: digest("architecture.c4"),
+  siteSha256: digest("index.html"),
+  acceptance
+}, null, 2) + "\n");
+'
+```
 
-Use the shell to calculate exact digests. Do not change the inputs. The
-independent replay checks these bytes, the ownership of each story in CALM,
-and the declared coverage. Browser acceptance is recorded in a separate check.
+Confirm the resulting file exists, then finish. Independent replay verifies
+the digests, CALM ownership, and acceptance coverage. The worker runs browser
+acceptance in a separate job.
