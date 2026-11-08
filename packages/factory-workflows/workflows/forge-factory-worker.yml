@@ -1,0 +1,363 @@
+name: Forge Factory Worker
+on:
+  workflow_call:
+    secrets:
+      COPILOT_GITHUB_TOKEN:
+        required: true
+      FORGE_JEV_TOKEN:
+        required: false
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and repair the selected story
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    outputs:
+      package: ${{ steps.resolve.outputs.package }}
+      package_sha: ${{ steps.resolve.outputs.package_sha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - id: resolve
+        env:
+          STORY: ${{ github.event.inputs.story || 'STORY-001' }}
+          INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
+          TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
+          PUBLISH_PAGES: ${{ github.event.inputs.publish_pages }}
+          PUBLIC_INPUTS: ${{ github.event.inputs.public_inputs }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          set -euo pipefail
+          [[ "$STORY" =~ ^STORY-[0-9]+$ ]]
+          [[ "$TOPOLOGY" == direct || "$TOPOLOGY" == delegated ]]
+          if [[ -n "$INPUT_DIRECTORY" ]]; then
+            [[ "$INPUT_DIRECTORY" =~ ^[a-zA-Z0-9_/-]+$ && "$INPUT_DIRECTORY" != /* ]]
+            [[ "$PUBLIC_INPUTS" == true ]] || { echo '::error::Confirm that the tracked inputs are public and safe to send to Copilot and retain in run artifacts.'; exit 1; }
+            [[ "$PUBLISH_PAGES" != true ]] || { echo '::error::Pages accepts only the public reference fixture.'; exit 1; }
+          fi
+          case "$WEBSITE_RELEASE" in
+            '') role=skills; package_name=requirements ;;
+            baseline|step-free)
+              [[ -z "$INPUT_DIRECTORY" ]] || { echo '::error::Website releases use their reviewed product document.'; exit 1; }
+              role=websiteChecking; package_name=website-acceptance ;;
+            *) echo '::error::Unknown website release.'; exit 1 ;;
+          esac
+          package="$(node factory/cli.mjs assemble | jq -er --arg role "$role" '.packages[$role]')"
+          [[ "$package" =~ ^richgo/forge-kit-skills/packages/"$package_name"#[0-9a-f]{40}$ ]]
+          printf 'package=%s\npackage_sha=%s\nstory=%s\ninput_directory=%s\ntopology=%s\n' \
+            "$package" "${package##*#}" "$STORY" "$INPUT_DIRECTORY" "$TOPOLOGY" >> "$GITHUB_OUTPUT"
+      - if: github.event.inputs.website_release == ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: richgo/forge-kit-skills
+          ref: ${{ steps.resolve.outputs.package_sha }}
+          path: _requirements
+          persist-credentials: false
+      - name: Run the factory with approved product and architecture inputs
+        if: github.event.inputs.website_release == ''
+        env:
+          FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
+          FORGE_JEV_TOKEN: ${{ github.event.inputs.use_jev == 'true' && secrets.FORGE_JEV_TOKEN || '' }}
+          USE_JEV: ${{ github.event.inputs.use_jev }}
+          INJECT_FAULT: ${{ github.event.inputs.inject_fault }}
+          STORY: ${{ steps.resolve.outputs.story }}
+          INPUT_DIRECTORY: ${{ steps.resolve.outputs.input_directory }}
+          TOPOLOGY: ${{ steps.resolve.outputs.topology }}
+        run: |
+          set -euo pipefail
+          [[ "$USE_JEV" != true || -n "$FORGE_JEV_TOKEN" ]] || { echo '::error::Configure FORGE_JEV_TOKEN.'; exit 1; }
+          inputs="$RUNNER_TEMP/story-inputs"
+          mkdir "$inputs"
+          if [[ -n "$INPUT_DIRECTORY" ]]; then
+            for file in product-requirements.json architecture.json architecture.c4; do
+              git show "HEAD:$INPUT_DIRECTORY/$file" > "$inputs/$file"
+            done
+          else
+            cp examples/product-requirements.json "$inputs/"
+            if [[ "$TOPOLOGY" == delegated ]]; then
+              cp test/fixtures/delegated/{architecture.json,architecture.c4} "$inputs/"
+            else
+              cp architecture/slice.json "$inputs/architecture.json"
+              cp architecture/slice.c4 "$inputs/architecture.c4"
+            fi
+          fi
+          fault=()
+          if [[ "$INJECT_FAULT" == true ]]; then fault=(--fault wrong-output-once); fi
+          node factory/cli.mjs run out --inputs "$inputs" --story "$STORY" "${fault[@]}"
+          cp "$inputs/product-requirements.json" out/
+      - name: Generate the CALM model, LikeC4 view, and website from the approved release
+        if: github.event.inputs.website_release != ''
+        env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-candidate
+          path: out/
+          if-no-files-found: error
+      - if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-failure-state
+          path: out/state.json
+          if-no-files-found: ignore
+
+  contract:
+    name: Run the APMX product story contract
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-candidate
+          path: out
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
+      - run: npm install --global --no-fund --no-audit @github/copilot@1.0.107
+      - name: Produce contract output for the actual candidate
+        env:
+          PACKAGE: ${{ needs.build.outputs.package }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/factory-story"
+          mkdir "$workspace"
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
+          else
+            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+          fi
+          cd "$workspace"
+          apmx --from "$PACKAGE" --on copilot --allow-host-access --allow-unproven-inputs
+          receipts=(.apm/*/*/receipt.intoto.jsonl)
+          test "${#receipts[@]}" -eq 1
+          test -f "${receipts[0]}"
+          mkdir "$RUNNER_TEMP/producer-receipt"
+          cp -r "${receipts[0]}" "$(dirname "${receipts[0]}")/evidence" "$RUNNER_TEMP/producer-receipt/"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-contract-producer
+          path: ${{ runner.temp }}/producer-receipt
+          if-no-files-found: error
+
+  verify:
+    name: Replay the story and independently check the contract
+    needs: [build, contract]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - if: github.event.inputs.website_release == ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: richgo/forge-kit-skills
+          ref: ${{ needs.build.outputs.package_sha }}
+          path: _requirements
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-candidate
+          path: out
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-contract-producer
+          path: ${{ runner.temp }}/producer-receipt
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
+      - name: Verify the readiness probe against the approved inputs
+        if: github.event.inputs.website_release == ''
+        env:
+          FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
+          PACKAGE: ${{ needs.build.outputs.package }}
+          STORY: ${{ github.event.inputs.story || 'STORY-001' }}
+          INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
+          TOPOLOGY: ${{ github.event.inputs.topology || 'delegated' }}
+          INJECT_FAULT: ${{ github.event.inputs.inject_fault }}
+        run: |
+          set -euo pipefail
+          inputs="$RUNNER_TEMP/story-inputs"
+          mkdir "$inputs"
+          [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.skills')" ]]
+          repairs=0
+          if [[ "$INJECT_FAULT" == true ]]; then repairs=1; fi
+          jq -e --argjson repairs "$repairs" '.predicate.repairs == $repairs' out/receipt.json > /dev/null
+          if [[ -n "$INPUT_DIRECTORY" ]]; then
+            for file in product-requirements.json architecture.json architecture.c4; do
+              git show "HEAD:$INPUT_DIRECTORY/$file" > "$inputs/$file"
+            done
+          else
+            cp examples/product-requirements.json "$inputs/"
+            if [[ "$TOPOLOGY" == delegated ]]; then
+              cp test/fixtures/delegated/{architecture.json,architecture.c4} "$inputs/"
+            else
+              cp architecture/slice.json "$inputs/architecture.json"
+              cp architecture/slice.c4 "$inputs/architecture.c4"
+            fi
+          fi
+          node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" > out/requirements-verification.json
+          cp "$inputs/product-requirements.json" out/
+      - if: github.event.inputs.website_release != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22.22.3'
+      - name: Validate CALM and LikeC4 and replay the approved website stories in Chromium
+        if: github.event.inputs.website_release != ''
+        env:
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+          PACKAGE: ${{ needs.build.outputs.package }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" == "$(node factory/cli.mjs assemble | jq -er '.packages.websiteChecking')" ]]
+          npx --yes --package @finos/calm-cli@1.68.0 calm validate -a out/architecture.json
+          npx --yes --package likec4@1.60.0 likec4 validate out
+          npm install --prefix "$RUNNER_TEMP/browser" --no-fund --no-audit playwright@1.56.1
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
+          export FORGE_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright/index.mjs"
+          node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out > out/browser-evidence.json
+      - name: Independently replay the APMX contract on the checked build
+        env:
+          PACKAGE: ${{ needs.build.outputs.package }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/factory-story"
+          mkdir "$workspace" verified
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
+          else
+            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+          fi
+          (
+            cd "$workspace"
+            apmx check "$RUNNER_TEMP/producer-receipt" --from "$PACKAGE"
+          )
+          receipts=("$workspace"/.apm/*/*/receipt.intoto.jsonl)
+          test "${#receipts[@]}" -eq 1
+          test -f "${receipts[0]}"
+          cmp <(jq -S . out/requirements-verification.json) <(jq -S . "$(dirname "${receipts[0]}")/outputs/requirements-verification.json")
+          cp -r "${receipts[0]}" "$(dirname "${receipts[0]}")/evidence" verified/
+          cp out/requirements-verification.json verified/
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            cp out/{architecture.json,architecture.c4,browser-evidence.json} verified/
+          else
+            cp out/receipt.json verified/
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-verified
+          path: verified/
+          if-no-files-found: error
+      - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release == ''
+        run: node factory/pages.mjs package out release "$GITHUB_SHA"
+      - if: github.event.inputs.publish_pages == 'true' && github.event.inputs.website_release != ''
+        run: node factory/website.mjs package out release "$GITHUB_SHA"
+      - if: github.event.inputs.publish_pages == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-release-proof
+          path: release/release.json
+          if-no-files-found: error
+      - if: github.event.inputs.publish_pages == 'true'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+        with:
+          name: factory-pages
+          path: release
+
+  attest:
+    name: Sign the checked APMX evidence
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-verified
+          path: verified
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: danielmeppiel/apmx
+          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
+          path: _apmx
+          persist-credentials: false
+      - uses: ./_apmx/.github/actions/setup-from-source
+        with:
+          path: _apmx
+      - uses: danielmeppiel/apmx/.github/actions/attest@fae2067a0dc6ff07beda714015ff9e648f41ce63
+        with:
+          receipt: verified/receipt.intoto.jsonl
+
+  pages:
+    name: Publish and observe the verified reference
+    if: github.event.inputs.publish_pages == 'true'
+    needs: attest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    timeout-minutes: 10
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-release-proof
+          path: proof
+      - id: publish
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+        with:
+          artifact_name: factory-pages
+          timeout: 240000
+      - name: Observe the deployed release
+        env:
+          PAGE_URL: ${{ steps.publish.outputs.page_url }}
+          WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
+        run: |
+          if [[ -n "$WEBSITE_RELEASE" ]]; then
+            node factory/website.mjs probe "$PAGE_URL" proof/release.json > proof/observed.json
+          else
+            node factory/pages.mjs probe "$PAGE_URL" proof/release.json > proof/observed.json
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-pages-observation
+          path: proof/observed.json
+          if-no-files-found: error

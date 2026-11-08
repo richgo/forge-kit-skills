@@ -6,7 +6,7 @@ const source = path => new URL('../' + path, import.meta.url);
 const read = path => readFile(source(path), 'utf8');
 
 test('all new package exports name tracked source files', async () => {
-  for (const name of ['acceptance', 'architecture', 'delivery', 'factory-workflows', 'repair-acceptance']) {
+  for (const name of ['acceptance', 'architecture', 'delivery', 'factory-workflows', 'repair-acceptance', 'website-acceptance']) {
     const directory = 'packages/' + name + '/';
     assert.match(await read(directory + 'apm.yml'), /^version: "\d+\.\d+\.\d+"$/m);
     const { version, exports } = JSON.parse(await read(directory + 'exports.json'));
@@ -34,4 +34,12 @@ test('the callable workflow mirrors package sources and grants no write scopes',
 test('standalone APMX build uses the same CALM checker as the architecture package', async () => {
   assert.equal(await read('packages/acceptance/checks/architecture.mjs'),
     await read('packages/architecture/checks/architecture.mjs'));
+});
+
+test('the packaged factory orchestrator exports its callable worker and matches the installed sources', async () => {
+  const catalog = JSON.parse(await read('packages/factory-workflows/exports.json'));
+  for (const name of ['forge-factory.md', 'forge-factory-worker.yml']) {
+    assert.ok(catalog.exports.some(entry => entry.path === 'workflows/' + name), name + ' is not exported');
+    assert.equal(await read('.github/workflows/' + name), await read('packages/factory-workflows/workflows/' + name));
+  }
 });

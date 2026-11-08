@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "exports": [
+    { "kind": "apmx-contract", "path": "contracts/verify-website.contract.md" },
+    { "kind": "checker", "path": "checks/website-check.mjs" }
+  ]
+}
