@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "runtimeApi": 1,
+  "exports": [
+    { "kind": "architecture-plan", "path": "runtime/architecture-plan.mjs" },
+    { "kind": "agent-production", "path": "runtime/agent-production.mjs" },
+    { "kind": "agent-verification", "path": "runtime/agent-verifier.mjs" }
+  ]
+}
