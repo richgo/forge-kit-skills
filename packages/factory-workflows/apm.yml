@@ -1,5 +1,5 @@
 name: forge-kit-factory-workflows
-version: "0.4.1"
+version: "0.7.1"
 description: Forge Kit workflow components, MCP policy, and APMX contract sources.
 targets:
   - copilot

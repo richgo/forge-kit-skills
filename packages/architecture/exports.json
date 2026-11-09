@@ -1,4 +1,7 @@
 {
   "version": 1,
-  "exports": [{ "kind": "architecture-check", "path": "checks/architecture.mjs" }]
+  "exports": [
+    { "kind": "architecture-check", "path": "checks/architecture.mjs" },
+    { "kind": "impact-planner", "path": "checks/impact.mjs" }
+  ]
 }
