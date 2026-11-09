@@ -1,0 +1,7 @@
+name: forge-kit-agent-delivery
+version: "1.0.0"
+description: Product-neutral architecture planning, isolated agent production and independent release verification.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []
