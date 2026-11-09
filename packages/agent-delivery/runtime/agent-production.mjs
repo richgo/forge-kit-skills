@@ -69,13 +69,14 @@ export function readAgentEvents(text, expectedSessionId) {
   };
 }
 
-async function runCopilotAttempt(role, prompt, token) {
+async function runCopilotAttempt(role, prompt, token, useProviderDefault = false) {
   const work = await mkdtemp(join(tmpdir(), 'forge-agent-'));
   const sessionId = randomUUID();
+  const modelArgs = useProviderDefault ? [] : ['--model', model, '--reasoning-effort', reasoningEffort];
   try {
     const { stdout } = await execute('copilot', [
       '-p', prompt, '--session-id', sessionId, '--output-format', 'json', '--disable-builtin-mcps',
-      '--model', model, '--reasoning-effort', reasoningEffort,
+      ...modelArgs,
       '--available-tools=__forge_no_tools__', '--no-ask-user',
       '--deny-tool=shell', '--deny-tool=write', '--deny-tool=read', '--deny-tool=url',
     ], {
@@ -92,7 +93,14 @@ async function runCopilotAttempt(role, prompt, token) {
       throw Object.assign(new Error('Copilot ' + role + ' process failed'), { code });
     });
     const { value, trace } = readAgentEvents(stdout, sessionId);
-    return { value, trace: { ...trace, model, reasoningEffort } };
+    return {
+      value,
+      trace: {
+        ...trace,
+        model: useProviderDefault ? 'provider-default' : model,
+        reasoningEffort: useProviderDefault ? 'provider-default' : reasoningEffort,
+      },
+    };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -112,7 +120,7 @@ export async function callCopilot(role, context) {
     return { value, trace: { ...trace, transportRetries: 0 } };
   } catch (error) {
     if (!['ERR_COPILOT_RESPONSE_JSON', 'ERR_COPILOT_PROVIDER_TIMEOUT', 'ERR_COPILOT_PROVIDER_EXIT'].includes(error.code)) throw error;
-    const { value, trace } = await runCopilotAttempt(role, prompt, token);
+    const { value, trace } = await runCopilotAttempt(role, prompt, token, error.code === 'ERR_COPILOT_PROVIDER_EXIT');
     return { value, trace: { ...trace, transportRetries: 1, transportRetryReason: error.code } };
   }
 }
