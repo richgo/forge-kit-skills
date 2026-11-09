@@ -93,3 +93,13 @@ test('producer and verifier execute from the same audited APM restore', () => {
   }
   assert.match(workflow, /apmModules: \$modules/);
 });
+
+test('producer, verifier, and attestor all use the same verified native APMX release', () => {
+  assert.doesNotMatch(workflow, /setup-from-source/);
+  for (const [job, next] of [['contract', 'verify'], ['verify', 'attest'], ['attest', 'authenticate']]) {
+    const section = workflow.split('\n  ' + job + ':\n')[1].split('\n  ' + next + ':\n')[0];
+    assert.match(section, /repos\/danielmeppiel\/apmx\/releases\/assets\/699962963\?download=1/);
+    assert.match(section, /524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778/);
+    assert.match(section, /sha256sum --check/);
+  }
+});

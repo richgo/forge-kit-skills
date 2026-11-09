@@ -182,15 +182,16 @@ jobs:
         with:
           name: factory-candidate
           path: out
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: danielmeppiel/apmx
-          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
-          path: _apmx
-          persist-credentials: false
-      - uses: ./_apmx/.github/actions/setup-from-source
-        with:
-          path: _apmx
+      - name: Install the verified APMX 0.8.0 release
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/danielmeppiel/apmx/releases/assets/699962963?download=1' -o "$scratch/apmx.tar.gz"
+          printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
+          apmx="$(find "$scratch" -type f -name apmx -print -quit)"
+          test -x "$apmx"
+          dirname "$apmx" >> "$GITHUB_PATH"
       - run: npm install --global --no-fund --no-audit @github/copilot@1.0.107
       - name: Produce contract output for the actual candidate
         env:
@@ -253,15 +254,16 @@ jobs:
         with:
           name: factory-contract-producer
           path: ${{ runner.temp }}/producer-receipt
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: danielmeppiel/apmx
-          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
-          path: _apmx
-          persist-credentials: false
-      - uses: ./_apmx/.github/actions/setup-from-source
-        with:
-          path: _apmx
+      - name: Install the verified APMX 0.8.0 release
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/danielmeppiel/apmx/releases/assets/699962963?download=1' -o "$scratch/apmx.tar.gz"
+          printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
+          apmx="$(find "$scratch" -type f -name apmx -print -quit)"
+          test -x "$apmx"
+          dirname "$apmx" >> "$GITHUB_PATH"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22.22.3'
@@ -385,15 +387,16 @@ jobs:
         with:
           name: factory-verified
           path: verified
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: danielmeppiel/apmx
-          ref: fae2067a0dc6ff07beda714015ff9e648f41ce63
-          path: _apmx
-          persist-credentials: false
-      - uses: ./_apmx/.github/actions/setup-from-source
-        with:
-          path: _apmx
+      - name: Install the verified APMX 0.8.0 release
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/danielmeppiel/apmx/releases/assets/699962963?download=1' -o "$scratch/apmx.tar.gz"
+          printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
+          tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
+          apmx="$(find "$scratch" -type f -name apmx -print -quit)"
+          test -x "$apmx"
+          dirname "$apmx" >> "$GITHUB_PATH"
       - uses: danielmeppiel/apmx/.github/actions/attest@fae2067a0dc6ff07beda714015ff9e648f41ce63
         with:
           receipt: verified/receipt.intoto.jsonl
