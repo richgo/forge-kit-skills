@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { produceRevision, verifyAgentAudit } from '../packages/agent-delivery/runtime/agent-production.mjs';
+import { produceRevision, readAgentEvents, verifyAgentAudit } from '../packages/agent-delivery/runtime/agent-production.mjs';
 
 function fixture() {
   const revision = { product: { files: ['src/main.mjs'] }, architecture: {} };
@@ -27,6 +27,19 @@ function fixture() {
   };
   return { revision, roles, audit, options };
 }
+
+test('invalid Copilot JSON is classified without exposing provider output', () => {
+  const marker = 'untrusted-response-marker';
+  const output = JSON.stringify({ type: 'assistant.message', data: { content: marker } });
+  for (const [text, code] of [[marker, 'ERR_COPILOT_EVENT_JSON'], [output, 'ERR_COPILOT_RESPONSE_JSON']]) {
+    assert.throws(() => readAgentEvents(text, randomUUID()), error => {
+      assert.equal(error.code, code);
+      assert.ok(!String(error.stack).includes(marker));
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
+});
 
 test('only a confident typed recommendation can authorize the bounded agent repair', async () => {
   const { revision, options, roles, audit } = fixture();
