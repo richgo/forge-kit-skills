@@ -67,7 +67,7 @@ export async function callCopilot(role, context) {
       '--available-tools=__forge_no_tools__', '--no-ask-user',
       '--deny-tool=shell', '--deny-tool=write', '--deny-tool=read', '--deny-tool=url',
     ], {
-      cwd: work, timeout: 120_000, maxBuffer: 512 * 1024,
+      cwd: work, timeout: 180_000, maxBuffer: 8 * 1024 * 1024,
       env: {
         PATH: process.env.PATH, HOME: work, COPILOT_HOME: join(work, 'copilot'),
         COPILOT_AUTO_UPDATE: 'false', COPILOT_GITHUB_TOKEN: token,
