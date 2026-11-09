@@ -74,7 +74,22 @@ test('website scope is independently reproduced and security evidence is require
   const signer = workflow.split('\n  attest:\n')[1].split('\n  authenticate:\n')[0];
   assert.ok(producer.indexOf('bash factory/plan-release.sh') < producer.indexOf('node factory/website.mjs build'));
   assert.match(verifier, /cmp "\$RUNNER_TEMP\/independent-plan\.json" out\/impact-plan\.json/);
-  assert.match(verifier, /export FORGE_SECURITY_PACKAGE="_security\/packages\/security-review"/);
+  assert.match(verifier, /Restore the audited capability bytes/);
   assert.match(signer, /securityVerification: \$security/);
   assert.match(signer, /impactPlan: \$plan/);
+});
+
+test('producer and verifier execute from the same audited APM restore', () => {
+  const assembly = workflow.split('\n  assemble:\n')[1].split('\n  build:\n')[0];
+  assert.match(assembly, /archive="\$RUNNER_TEMP\/apm_modules\.tar"/);
+  assert.match(assembly, /-cf "\$archive" -C "\$scratch\/project" apm_modules/);
+  assert.match(assembly, /name: factory-apm-modules/);
+  for (const [job, next] of [['build', 'contract'], ['verify', 'attest']]) {
+    const section = workflow.split('\n  ' + job + ':\n')[1].split('\n  ' + next + ':\n')[0];
+    assert.match(section, /name: factory-apm-modules/);
+    assert.match(section, /sha256sum --check/);
+    assert.match(section, /archive="\$RUNNER_TEMP\/apm-restore\/apm_modules\.tar"/);
+    assert.match(section, /tar --no-same-owner -xf "\$archive"/);
+  }
+  assert.match(workflow, /apmModules: \$modules/);
 });

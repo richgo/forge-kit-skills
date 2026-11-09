@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       lock: ${{ steps.install.outputs.lock }}
+      modules: ${{ steps.install.outputs.modules }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -42,6 +43,15 @@ jobs:
           )
           cmp apm.lock.yaml "$scratch/project/apm.lock.yaml"
           printf 'lock=%s\n' "$lock" >> "$GITHUB_OUTPUT"
+          archive="$RUNNER_TEMP/apm_modules.tar"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -cf "$archive" -C "$scratch/project" apm_modules
+          printf 'modules=%s\n' "$(sha256sum "$archive" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: factory-apm-modules
+          path: ${{ runner.temp }}/apm_modules.tar
+          if-no-files-found: error
 
   build:
     name: Build and repair the selected story
@@ -53,12 +63,24 @@ jobs:
     timeout-minutes: 10
     outputs:
       package: ${{ steps.resolve.outputs.package }}
-      package_sha: ${{ steps.resolve.outputs.package_sha }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 2
           persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: factory-apm-modules
+          path: ${{ runner.temp }}/apm-restore
+      - name: Restore the audited capability bytes
+        env:
+          APM_MODULES: ${{ needs.assemble.outputs.modules }}
+        run: |
+          set -euo pipefail
+          [[ "$APM_MODULES" =~ ^[0-9a-f]{64}$ ]]
+          archive="$RUNNER_TEMP/apm-restore/apm_modules.tar"
+          printf '%s  %s\n' "$APM_MODULES" "$archive" | sha256sum --check
+          tar --no-same-owner -xf "$archive"
       - id: resolve
         env:
           STORY: ${{ github.event.inputs.story || 'STORY-001' }}
@@ -85,19 +107,11 @@ jobs:
           esac
           package="$(node factory/cli.mjs assemble | jq -er --arg role "$role" '.packages[$role]')"
           [[ "$package" =~ ^richgo/forge-kit-skills/packages/"$package_name"#[0-9a-f]{40}$ ]]
-          printf 'package=%s\npackage_sha=%s\nstory=%s\ninput_directory=%s\ntopology=%s\n' \
-            "$package" "${package##*#}" "$STORY" "$INPUT_DIRECTORY" "$TOPOLOGY" >> "$GITHUB_OUTPUT"
-      - if: github.event.inputs.website_release == ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: richgo/forge-kit-skills
-          ref: ${{ steps.resolve.outputs.package_sha }}
-          path: _requirements
-          persist-credentials: false
+          printf 'package=%s\nstory=%s\ninput_directory=%s\ntopology=%s\n' \
+            "$package" "$STORY" "$INPUT_DIRECTORY" "$TOPOLOGY" >> "$GITHUB_OUTPUT"
       - name: Run the factory with approved product and architecture inputs
         if: github.event.inputs.website_release == ''
         env:
-          FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
           FORGE_JEV_TOKEN: ${{ github.event.inputs.use_jev == 'true' && secrets.FORGE_JEV_TOKEN || '' }}
           USE_JEV: ${{ github.event.inputs.use_jev }}
           INJECT_FAULT: ${{ github.event.inputs.inject_fault }}
@@ -207,7 +221,7 @@ jobs:
 
   verify:
     name: Replay the story and independently check the contract
-    needs: [build, contract]
+    needs: [assemble, build, contract]
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -218,13 +232,19 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - if: github.event.inputs.website_release == ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          repository: richgo/forge-kit-skills
-          ref: ${{ needs.build.outputs.package_sha }}
-          path: _requirements
-          persist-credentials: false
+          name: factory-apm-modules
+          path: ${{ runner.temp }}/apm-restore
+      - name: Restore the audited capability bytes
+        env:
+          APM_MODULES: ${{ needs.assemble.outputs.modules }}
+        run: |
+          set -euo pipefail
+          [[ "$APM_MODULES" =~ ^[0-9a-f]{64}$ ]]
+          archive="$RUNNER_TEMP/apm-restore/apm_modules.tar"
+          printf '%s  %s\n' "$APM_MODULES" "$archive" | sha256sum --check
+          tar --no-same-owner -xf "$archive"
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: factory-candidate
@@ -248,7 +268,6 @@ jobs:
       - name: Verify the readiness probe against the approved inputs
         if: github.event.inputs.website_release == ''
         env:
-          FORGE_REQUIREMENTS_PACKAGE: _requirements/packages/requirements
           PACKAGE: ${{ needs.build.outputs.package }}
           STORY: ${{ github.event.inputs.story || 'STORY-001' }}
           INPUT_DIRECTORY: ${{ github.event.inputs.input_directory }}
@@ -282,21 +301,6 @@ jobs:
           if [[ "$USE_JEV" == true ]]; then advisor=typed-advisor; fi
           node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" --repair-advisor "$advisor" > out/requirements-verification.json
           cp "$inputs/product-requirements.json" out/
-      - name: Resolve the pinned website security policy from the trusted checkout
-        if: github.event.inputs.website_release != ''
-        id: website-security
-        run: |
-          set -euo pipefail
-          ref="$(node factory/cli.mjs assemble | jq -er '.packages.securityReview')"
-          [[ "$ref" =~ ^richgo/forge-kit-skills/packages/security-review#[0-9a-f]{40}$ ]]
-          printf 'sha=%s\n' "${ref##*#}" >> "$GITHUB_OUTPUT"
-      - if: github.event.inputs.website_release != ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: richgo/forge-kit-skills
-          ref: ${{ steps.website-security.outputs.sha }}
-          path: _security
-          persist-credentials: false
       - name: Validate CALM and LikeC4 and replay the approved website stories in Chromium
         if: github.event.inputs.website_release != ''
         env:
@@ -315,7 +319,6 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/browser" --no-fund --no-audit playwright@1.56.1
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
           export FORGE_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright/index.mjs"
-          export FORGE_SECURITY_PACKAGE="_security/packages/security-review"
           node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out > out/browser-evidence.json
       - name: Independently replay the APMX contract on the checked build
         env:
@@ -403,6 +406,7 @@ jobs:
       - name: Bind release inputs and independent results
         if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
         env:
+          APM_MODULES: ${{ needs.assemble.outputs.modules }}
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
           APM_LOCK: ${{ needs.assemble.outputs.lock }}
         run: |
@@ -419,9 +423,9 @@ jobs:
           fi
           jq -n --arg source "$GITHUB_SHA" --arg lock "$APM_LOCK" \
             --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
-            --arg checks "$(hash verified/requirements-verification.json)" \
+            --arg checks "$(hash verified/requirements-verification.json)" --arg modules "$APM_MODULES" \
             --arg browser "$browser" --arg security "$security" --arg repairs "$repairs" --arg plan "$plan" \
-            '{source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan}' > release-predicate.json
+            '{source: $source, apmLock: $lock, apmModules: $modules, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan}' > release-predicate.json
       - if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
         id: pages-signature
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
@@ -441,7 +445,7 @@ jobs:
   authenticate:
     name: Verify the signed release archive
     if: github.event.inputs.website_release != '' || github.event.inputs.publish_pages == 'true'
-    needs: attest
+    needs: [assemble, attest]
     runs-on: ubuntu-24.04
     permissions:
       attestations: read
@@ -465,6 +469,7 @@ jobs:
           path: archive
       - name: Authenticate the release bytes before granting deployment
         env:
+          APM_MODULES: ${{ needs.assemble.outputs.modules }}
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
           PUBLISH_PAGES: ${{ github.event.inputs.publish_pages }}
           GH_TOKEN: ${{ github.token }}
@@ -494,10 +499,10 @@ jobs:
           fi
           jq -e --arg source "$GITHUB_SHA" --arg lock "$(hash apm.lock.yaml)" \
             --arg receipt "$(hash verified/receipt.intoto.jsonl)" \
-            --arg checks "$(hash verified/requirements-verification.json)" \
+            --arg checks "$(hash verified/requirements-verification.json)" --arg modules "$APM_MODULES" \
             --arg browser "$browser" --arg security "$security" --arg repairs "$repairs" --arg plan "$plan" \
             'any(.[].verificationResult.statement.predicate;
-              . == {source: $source, apmLock: $lock, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan})' \
+              . == {source: $source, apmLock: $lock, apmModules: $modules, apmxReceipt: $receipt, requirementsVerification: $checks, browserEvidence: $browser, securityVerification: $security, repairDecisions: $repairs, impactPlan: $plan})' \
             proof/verified-signature.json > /dev/null
           tar -xOf archive/artifact.tar ./release.json > proof/release.json
           jq -e --arg source "$GITHUB_SHA" '.source == $source' proof/release.json
