@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { produceRevision } from '../packages/agent-delivery/runtime/agent-production.mjs';
+import { produceRevision, verifyAgentAudit } from '../packages/agent-delivery/runtime/agent-production.mjs';
 
 function fixture() {
   const revision = { product: { files: ['src/main.mjs'] }, architecture: {} };
@@ -16,7 +17,7 @@ function fixture() {
   const options = {
     agent: role => {
       roles.push(role);
-      return { value: responses[role] };
+      return { value: responses[role], trace: { sessionId: randomUUID(), responseSha256: 'a'.repeat(64), toolCalls: 0 } };
     },
     check: (_revision, files) => ({
       passed: files['src/main.mjs'] === 'fixed',
@@ -59,4 +60,48 @@ test('missing, invalid, or unavailable advice fails closed', async () => {
     assert.ok(!roles.includes('repair'));
     assert.equal(audit.find(event => event.decision === 'repair-policy').route, 'escalate');
   }
+});
+
+test('review blockers and sandbox failures cannot be retried by a typed advisor', async () => {
+  for (const fail of ['review', 'sandbox']) {
+    const { revision, options, roles } = fixture();
+    const states = [];
+    options.adviseRepair = state => {
+      states.push(state);
+      return { choice: 'retry-build', probability: 1 };
+    };
+    if (fail === 'review') {
+      const agent = options.agent;
+      options.agent = role => {
+        const result = agent(role);
+        if (role === 'review') result.value = { issues: ['Unsafe contract'] };
+        return result;
+      };
+    } else {
+      options.check = () => ({ passed: false, checks: [{ id: 'AC-1', story: 'STORY-1', passed: false, reason: 'execution-failed' }] });
+    }
+    await assert.rejects(produceRevision(revision, null, options), /repair policy/);
+    assert.deepEqual(states, [{ failure: 'unclassified-failure', used: 0, limit: 1 }]);
+    assert.ok(!roles.includes('repair'));
+  }
+});
+
+test('strict audit replay requires an authorized typed decision before the repair session', async () => {
+  const records = [];
+  const candidates = {};
+  for (const name of ['initial', 'next']) {
+    const { revision, options } = fixture();
+    options.adviseRepair = () => ({ choice: 'retry-build', probability: 1 });
+    options.record = event => records.push({ revision: name, ...event });
+    candidates[name] = await produceRevision(revision, null, options);
+  }
+  const jsonl = events => events.map(event => JSON.stringify(event)).join('\n');
+  const options = { requireRepairPolicy: true };
+  assert.doesNotThrow(() => verifyAgentAudit(jsonl(records), candidates, options));
+  const stripped = records.filter(event => event.decision !== 'repair-policy');
+  assert.throws(() => verifyAgentAudit(jsonl(stripped), candidates, options), /repair policy/);
+  assert.doesNotThrow(() => verifyAgentAudit(jsonl(stripped), candidates));
+  const decision = records.find(event => event.decision === 'repair-policy');
+  decision.recommendation.probability = 0.79;
+  assert.throws(() => verifyAgentAudit(jsonl(records), candidates, options), /repair policy/);
 });

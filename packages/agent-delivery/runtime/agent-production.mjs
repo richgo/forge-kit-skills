@@ -107,6 +107,12 @@ async function adviseBoundedRepair(adviseRepair, state) {
   }
 }
 
+function repairAllowed(state, recommendation) {
+  return state?.failure === 'readiness-mismatch' && state.used === 0 && state.limit === 1 &&
+    recommendation?.choice === 'retry-build' && Number.isFinite(recommendation.probability) &&
+    recommendation.probability >= 0.8 && recommendation.probability <= 1;
+}
+
 export async function produceRevision(revision, previous, { agent, check, adviseRepair, record = async () => {} }) {
   const base = { product: revision.product, architecture: revision.architecture };
   const call = async (role, context) => {
@@ -125,14 +131,18 @@ export async function produceRevision(revision, previous, { agent, check, advise
     const acceptance = await check(revision, candidate);
     const failures = acceptance.checks.filter(item => !item.passed)
       .map(({ id, story }) => ({ id, story }));
-    await record({ decision: 'preflight', attempt, risks, review, failures, accepted: acceptance.passed && review.length === 0,
+    const accepted = acceptance.passed && review.length === 0;
+    const readinessMismatch = !acceptance.passed && review.length === 0 && failures.length > 0 &&
+      !acceptance.checks.some(item => item.reason === 'execution-failed');
+    const failureClass = readinessMismatch ? 'readiness-mismatch' : 'unclassified-failure';
+    await record({ decision: 'preflight', attempt, risks, review, failures, accepted, failureClass: accepted ? null : failureClass,
       candidateSha256: sha256(JSON.stringify(candidate)) });
-    if (acceptance.passed && review.length === 0) return { candidate, plan, repairs: attempt };
+    if (accepted) return { candidate, plan, repairs: attempt };
     assert.equal(attempt, 0, 'Agent repair budget exhausted');
     if (adviseRepair) {
-      const state = { failure: review.length ? 'unclassified-failure' : 'readiness-mismatch', used: attempt, limit: 1 };
+      const state = { failure: failureClass, used: attempt, limit: 1 };
       const recommendation = await adviseBoundedRepair(adviseRepair, state);
-      const authorized = recommendation?.choice === 'retry-build' && recommendation.probability >= 0.8;
+      const authorized = repairAllowed(state, recommendation);
       const route = authorized ? 'retry-build' : 'escalate';
       await record({ decision: 'repair-policy', state, recommendation, route });
       assert.ok(authorized, 'Agent repair policy escalated');
@@ -157,7 +167,7 @@ export function approveArchitectureChanges(product, impact) {
 }
 
 
-export function verifyAgentAudit(text, candidates) {
+export function verifyAgentAudit(text, candidates, { requireRepairPolicy = false } = {}) {
   const records = text.trim().split(/\r?\n/).map(line => JSON.parse(line));
   assert.ok(records.length > 0 && records.length <= 40 &&
     records.every(record => ['initial', 'next'].includes(record.revision)), 'Invalid agent audit');
@@ -180,6 +190,17 @@ export function verifyAgentAudit(text, candidates) {
     const checks = events.filter(event => event.decision === 'preflight');
     assert.deepEqual(checks.map(({ accepted }) => accepted), repairs ? [false, true] : [true],
       'Inconsistent agent preflight history');
+    const policies = events.filter(event => event.decision === 'repair-policy');
+    if (requireRepairPolicy || policies.length) {
+      assert.equal(policies.length, repairs, 'Invalid agent repair policy history');
+      if (repairs) {
+        const [policy] = policies;
+        const at = events.indexOf(policy);
+        assert.ok(policy.route === 'retry-build' && repairAllowed(policy.state, policy.recommendation) &&
+          checks[0].failureClass === policy.state.failure && events.indexOf(checks[0]) < at &&
+          at < events.findIndex(event => event.role === 'repair'), 'Invalid agent repair policy decision');
+      }
+    }
     assert.equal(checks.at(-1).candidateSha256, sha256(JSON.stringify(candidate)), 'Audit does not bind accepted source');
     revisions[name] = roles.map(({ role, trace }) => ({ role, ...trace }));
   }
