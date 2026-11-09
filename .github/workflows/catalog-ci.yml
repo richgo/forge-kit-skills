@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           compiler="$RUNNER_TEMP/gh-aw"
-          curl --fail --location --silent --show-error 'https://github.com/github/gh-aw/releases/download/v1.0.1/linux-amd64' -o "$compiler"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/github/gh-aw/releases/assets/682204668?download=1' -o "$compiler"
           printf '%s  %s\n' '746d0b41d5fb87e2c010b8ac23a464436bb745ff89fbd19a3456431942c37652' "$compiler" | sha256sum --check
           chmod +x "$compiler"
           pin=0627fdbe4beb5f3b71aa569f8d97150b87f2111a
@@ -61,7 +61,7 @@ jobs:
           set -euo pipefail
           [[ "$CATALOG_REF" =~ ^[0-9a-f]{40}$ ]]
           scratch="$(mktemp -d)"
-          curl --fail --location --silent --show-error 'https://github.com/danielmeppiel/apmx/releases/download/v0.8.0/apmx-0.8.0-linux-x86_64.tar.gz' -o "$scratch/apmx.tar.gz"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/danielmeppiel/apmx/releases/assets/699962963?download=1' -o "$scratch/apmx.tar.gz"
           printf '%s  %s\n' '524027362fe88728836ec6476d2c828d26b750d2067809c5741f27d950b93778' "$scratch/apmx.tar.gz" | sha256sum --check
           tar -xzf "$scratch/apmx.tar.gz" -C "$scratch"
           apmx="$(find "$scratch" -type f -name apmx -print -quit)"

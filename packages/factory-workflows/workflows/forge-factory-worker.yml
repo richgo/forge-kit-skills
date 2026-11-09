@@ -29,7 +29,7 @@ jobs:
           node factory/cli.mjs assemble | jq -e '.pending == []' > /dev/null
           node factory/cli.mjs assemble --apm | diff -u apm.yml -
           scratch="$(mktemp -d)"
-          curl --fail --location --silent --show-error 'https://github.com/microsoft/apm/releases/download/v0.33.0/apm-linux-x86_64.tar.gz' -o "$scratch/apm.tar.gz"
+          curl --fail --location --silent --show-error --retry 2 -H 'Accept: application/octet-stream' 'https://api.github.com/repos/microsoft/apm/releases/assets/606234092?download=1' -o "$scratch/apm.tar.gz"
           printf '%s  %s\n' 'e6374402c74318f7c8bef97a90d8572d049fdab0dc3871492c6b0647ae9e881f' "$scratch/apm.tar.gz" | sha256sum --check
           tar -xzf "$scratch/apm.tar.gz" -C "$scratch"
           apm="$(find "$scratch" -type f -name apm -print -quit)"
