@@ -8,7 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 // Docker Official Images OCI indexes. Pull the exact image before qualification.
 export const runtimeImages = Object.freeze({
-  node: 'docker.io/library/node@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752',
+  node: 'docker.io/library/node@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d',
   python: 'docker.io/library/python@sha256:a5a7017efc5969e00ae2b91c8eb0631049a569652aa4ffc4501769049ae45c72',
 });
 
