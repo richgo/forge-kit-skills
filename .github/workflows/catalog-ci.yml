@@ -53,7 +53,7 @@ jobs:
           key="$(node "$runtime" check out/handoff)"
           FORGE_CHECKER_PUBLIC_KEY="$key" node "$runtime" deliver out/handoff
           node "$runtime" rehearse out/repair --fail-first-observation
-      - name: Resolve and plan both immutable APMX packages
+      - name: Resolve and plan the immutable APMX packages
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           CATALOG_REF: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -74,3 +74,7 @@ jobs:
           for package in acceptance repair-acceptance; do
             "$apmx" --from "richgo/forge-kit-skills/packages/$package#$CATALOG_REF" --plan
           done
+          mkdir -p .forge
+          printf 'Review a change in the reference project.\n' > request.md
+          printf 'exit 1\n' > .forge/verify-change
+          "$apmx" --from "richgo/forge-kit-skills/packages/software-factory#$CATALOG_REF" --plan
