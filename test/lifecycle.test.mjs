@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
-import { generateKeyPairSync } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { project, validateArchitecture } from '../packages/architecture/checks/architecture.mjs';
 import { checkCandidate, signReceipt, verifyReceipt } from '../packages/acceptance/checks/acceptance.mjs';
 import { checkRepair } from '../packages/repair-acceptance/checks/repair-evidence.mjs';
 import { createEnvironment } from '../packages/delivery/runtime/delivery.mjs';
 import { build, repairDecision, runLifecycle } from '../packages/factory-workflows/runtime/lifecycle.mjs';
+import { readReferenceInputs } from '../packages/factory-workflows/runtime/reference-inputs.mjs';
 
-const fixture = name => new URL('../examples/reference/' + name, import.meta.url);
-const requirements = await readFile(fixture('requirements.json'));
-const architecture = await readFile(fixture('architecture.json'));
-const view = await readFile(fixture('architecture.c4'));
-const inputs = { requirements, architecture, view };
+const inputs = await readReferenceInputs();
+const { requirements, architecture, view } = inputs;
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 test('CALM controls the view and every requirement traces to a CALM node', () => {
   assert.equal(project(JSON.parse(architecture)), view.toString());
@@ -30,6 +30,12 @@ test('independent acceptance binds the exact candidate and inputs to a trusted s
   const other = generateKeyPairSync('ed25519');
   const artifact = build(requirements);
   const receipt = checkCandidate(artifact, inputs);
+  assert.equal(receipt.predicateType, 'https://github.com/richgo/forge-kit-skills/attestations/acceptance/v2');
+  assert.equal(receipt.predicate.requirementsCompiler, 'forgekit-requirements/markdown-v1');
+  assert.deepEqual(receipt.predicate.materials, {
+    requirements: sha256(requirements), architecture: sha256(architecture), view: sha256(view),
+    requirementsSource: sha256(inputs.requirementsSource), acceptanceFixture: sha256(inputs.acceptanceFixture),
+  });
   const envelope = signReceipt(receipt, signer.privateKey);
   assert.equal(verifyReceipt(envelope, signer.publicKey, artifact, inputs), true);
   assert.throws(() => verifyReceipt(envelope, other.publicKey, artifact, inputs), /signature/);
@@ -37,6 +43,51 @@ test('independent acceptance binds the exact candidate and inputs to a trusted s
   const changed = JSON.parse(requirements);
   changed[0].status = 500;
   assert.throws(() => checkCandidate(artifact, { ...inputs, requirements: Buffer.from(JSON.stringify(changed)) }), /acceptance/);
+});
+
+test('changing either approved source invalidates the receipt even when the projected requirement is unchanged', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'forge-reference-'));
+  t.after(() => rm(root, { force: true, recursive: true, maxRetries: 3 }));
+  const copy = pathToFileURL(root + '/');
+  const sources = [
+    ['product-requirements.md', inputs.requirementsSource],
+    ['acceptance.json', inputs.acceptanceFixture],
+  ];
+  await Promise.all([
+    ...sources,
+    ['architecture.json', architecture],
+    ['architecture.c4', view],
+  ].map(([name, bytes]) => writeFile(new URL(name, copy), bytes)));
+  const signer = generateKeyPairSync('ed25519');
+  const artifact = build(requirements);
+  const envelope = signReceipt(checkCandidate(artifact, inputs), signer.privateKey);
+  for (const [name, bytes] of sources) {
+    const file = new URL(name, copy);
+    await writeFile(file, Buffer.concat([bytes, Buffer.from('\n')]));
+    const changed = await readReferenceInputs(copy);
+    assert.deepEqual(changed.requirements, requirements);
+    assert.throws(() => verifyReceipt(envelope, signer.publicKey, artifact, changed), /receipt/);
+    await writeFile(file, bytes);
+  }
+  const markdown = inputs.requirementsSource.toString().replace('http.readiness', 'http.unknown');
+  await writeFile(new URL('product-requirements.md', copy), markdown);
+  await assert.rejects(readReferenceInputs(copy), /check ID/);
+});
+
+test('archived acceptance v1 receipts still verify with the original JSON bytes', () => {
+  const legacy = {
+    requirements: Buffer.from('[\n  { "id": "REQ-001", "node": "readiness", "path": "/ready", "status": 200, "body": "ready" }\n]\n'),
+    architecture, view,
+  };
+  const artifact = build(legacy.requirements);
+  const signer = generateKeyPairSync('ed25519');
+  const receipt = checkCandidate(artifact, legacy);
+  assert.equal(receipt.predicateType, 'https://github.com/richgo/forge-kit-skills/attestations/acceptance/v1');
+  assert.deepEqual(Object.keys(receipt.predicate.materials), ['requirements', 'architecture', 'view']);
+  assert.equal(Object.hasOwn(receipt.predicate, 'requirementsCompiler'), false);
+  const envelope = signReceipt(receipt, signer.privateKey);
+  assert.equal(verifyReceipt(envelope, signer.publicKey, artifact, legacy), true);
+  assert.throws(() => verifyReceipt(envelope, signer.publicKey, artifact, inputs), /receipt/);
 });
 
 test('policy escalates malformed, unknown, low-confidence and exhausted signals', () => {

@@ -6,12 +6,14 @@ requirements, build, review, and repair workflows.
 | Package directory | Version | Primitives |
 | --- | --- | --- |
 | [`packages/build-repair`](packages/build-repair) | 0.1.0 | TDD, bounded diagnosis, and a repair prompt |
-| [`packages/requirements`](packages/requirements) | 0.1.0 | Requirements skill, planning prompt, and spec reviewer |
+| [`packages/requirements`](packages/requirements) | 0.3.0 | Markdown requirements template and compiler, requirements skill, planning prompt, and spec reviewer |
 | [`packages/security-review`](packages/security-review) | 0.1.0 | Report-only triage skill and security reviewer |
-| [`packages/factory-workflows`](packages/factory-workflows) | 0.2.0 | Callable GH-AW reference workflow, typed repair routing, read-only MCP import, and repair planning |
-| [`packages/architecture`](packages/architecture) | 0.1.0 | CALM requirement traceability and LikeC4 projection and drift check |
-| [`packages/acceptance`](packages/acceptance) | 0.1.0 | APMX build contract and independent acceptance with signed in-toto evidence |
+| [`packages/factory-workflows`](packages/factory-workflows) | 0.8.0 | Callable GH-AW reference workflow, typed repair routing, read-only MCP import, and repair planning |
+| [`packages/architecture`](packages/architecture) | 0.2.1 | CALM requirement traceability and LikeC4 projection and drift check |
+| [`packages/acceptance`](packages/acceptance) | 0.2.0 | APMX build contract and independent acceptance with signed in-toto evidence |
 | [`packages/repair-acceptance`](packages/repair-acceptance) | 0.1.0 | APMX contract and independent before-and-after repair check |
+| [`packages/software-factory`](packages/software-factory) | 0.2.0 | APMX contracts for approved Markdown changes |
+| [`packages/website-acceptance`](packages/website-acceptance) | 0.2.0 | Independent Trail Desk requirements trace and artifact checks |
 | [`packages/delivery`](packages/delivery) | 0.1.0 | Gated promotion, HTTP readiness observation, and rollback |
 
 ## Consume a package

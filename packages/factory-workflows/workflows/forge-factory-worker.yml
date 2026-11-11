@@ -124,11 +124,11 @@ jobs:
           inputs="$RUNNER_TEMP/story-inputs"
           mkdir "$inputs"
           if [[ -n "$INPUT_DIRECTORY" ]]; then
-            for file in product-requirements.json architecture.json architecture.c4; do
+            for file in product-requirements.md acceptance.json architecture.json architecture.c4; do
               git show "HEAD:$INPUT_DIRECTORY/$file" > "$inputs/$file"
             done
           else
-            cp examples/product-requirements.json "$inputs/"
+            cp examples/{product-requirements.md,acceptance.json} "$inputs/"
             if [[ "$TOPOLOGY" == delegated ]]; then
               cp test/fixtures/delegated/{architecture.json,architecture.c4} "$inputs/"
             else
@@ -139,7 +139,7 @@ jobs:
           fault=()
           if [[ "$INJECT_FAULT" == true ]]; then fault=(--fault wrong-output-once); fi
           node factory/cli.mjs run out --inputs "$inputs" --story "$STORY" "${fault[@]}"
-          cp "$inputs/product-requirements.json" out/
+          cp "$inputs"/{product-requirements.md,acceptance.json} out/
       - name: Plan the approved Trail Desk change
         if: github.event.inputs.website_release != ''
         env:
@@ -153,7 +153,7 @@ jobs:
           WEBSITE_RELEASE: ${{ github.event.inputs.website_release }}
         run: |
           set -euo pipefail
-          node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out
+          node factory/website.mjs build "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.md" out
           cp "$RUNNER_TEMP/impact-plan.json" out/
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -203,9 +203,9 @@ jobs:
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$workspace"
           if [[ -n "$WEBSITE_RELEASE" ]]; then
-            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
+            cp out/{product-requirements.md,acceptance.json,catalog.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
           else
-            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+            cp out/{product-requirements.md,acceptance.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
           fi
           cd "$workspace"
           apmx --from "$PACKAGE" --on copilot --allow-host-access --allow-unproven-inputs
@@ -285,11 +285,11 @@ jobs:
           if [[ "$INJECT_FAULT" == true ]]; then repairs=1; fi
           jq -e --argjson repairs "$repairs" '.predicate.repairs == $repairs' out/receipt.json > /dev/null
           if [[ -n "$INPUT_DIRECTORY" ]]; then
-            for file in product-requirements.json architecture.json architecture.c4; do
+            for file in product-requirements.md acceptance.json architecture.json architecture.c4; do
               git show "HEAD:$INPUT_DIRECTORY/$file" > "$inputs/$file"
             done
           else
-            cp examples/product-requirements.json "$inputs/"
+            cp examples/{product-requirements.md,acceptance.json} "$inputs/"
             if [[ "$TOPOLOGY" == delegated ]]; then
               cp test/fixtures/delegated/{architecture.json,architecture.c4} "$inputs/"
             else
@@ -302,7 +302,7 @@ jobs:
           advisor=fixture-policy
           if [[ "$USE_JEV" == true ]]; then advisor=typed-advisor; fi
           node factory/cli.mjs requirements-evidence out --inputs "$inputs" --story "$STORY" --repair-advisor "$advisor" > out/requirements-verification.json
-          cp "$inputs/product-requirements.json" out/
+          cp "$inputs"/{product-requirements.md,acceptance.json} out/
       - name: Validate CALM and LikeC4 and replay the approved website stories in Chromium
         if: github.event.inputs.website_release != ''
         env:
@@ -321,7 +321,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/browser" --no-fund --no-audit playwright@1.56.1
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
           export FORGE_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright/index.mjs"
-          node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.json" out > out/browser-evidence.json
+          node factory/website.mjs verify "examples/trail-desk/$WEBSITE_RELEASE/product-requirements.md" out > out/browser-evidence.json
       - name: Independently replay the APMX contract on the checked build
         env:
           PACKAGE: ${{ needs.build.outputs.package }}
@@ -331,9 +331,9 @@ jobs:
           workspace="$RUNNER_TEMP/factory-story"
           mkdir "$workspace" verified
           if [[ -n "$WEBSITE_RELEASE" ]]; then
-            cp out/{product-requirements.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
+            cp out/{product-requirements.md,acceptance.json,catalog.json,architecture.json,architecture.c4,index.html,candidate-evidence.json} "$workspace/"
           else
-            cp out/{product-requirements.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
+            cp out/{product-requirements.md,acceptance.json,plan.json,receipt.json,deployed.mjs} "$workspace/"
           fi
           (
             cd "$workspace"

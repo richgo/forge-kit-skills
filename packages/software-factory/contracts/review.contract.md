@@ -1,6 +1,7 @@
 ---
 needs:
   - request.md
+  - product-requirements.md
   - specification.md
   - changes.diff
   - implementation.md
@@ -9,8 +10,9 @@ verify:
   review-present: test -s review.md
 ---
 
-Review the independently checked change against the request, project
-architecture, and expected behavior. Cite concrete files and lines in the
+Review the independently checked change against the approved request scope,
+the selected stories and acceptance criteria, and the project architecture.
+Cite concrete files and lines in the
 patch, distinguish observed facts from concerns, and flag missing tests,
 unsafe changes, or approval requirements. State when there are no findings.
 This is advisory review for the human reviewer.

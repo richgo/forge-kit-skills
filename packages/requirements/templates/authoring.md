@@ -1,24 +1,29 @@
-# Epic, Feature, Story
+# Author product requirements
 
-Copy [product-requirements.json](product-requirements.json) as the executable
-template. Add each feature under its owning epic and each story under its
-owning feature. Keep IDs stable and unique across the document.
+Copy [product-requirements.md](product-requirements.md) and replace the sample
+with the approved requirements. Keep the first line `# Product requirements`.
+The compiler interprets this format as schema version 1.
 
-| Level | Fill in |
-|---|---|
-| Epic | Title and the user or business outcome |
-| Feature | Title and a capability that advances the epic outcome |
-| Story | Title, actor, need, benefit, and owning CALM node ID |
-| Acceptance criterion | Stable ID, setup in Given, supported action in When, and a typed assertion in Then |
+| Level | Heading | Required content |
+| --- | --- | --- |
+| Epic | `## Epic EPIC-001 — Title` | One `Outcome: …` line describing the user or business outcome |
+| Feature | `### Feature FEAT-001 — Title` | One `Outcome: …` line describing the capability |
+| Story | `#### Story STORY-001 — Title` | An `Architecture owner:` line, a blank line, then the narrative |
+| Acceptance criterion | `##### Acceptance AC-001 — Title` | Four consecutive bullets starting with `- Given`, `- When`, `- Then`, and `- Check:`, in that order |
 
-The readiness reference profile supports the action `run-readiness-probe`
-and assertions for `stdout` and `exitCode`. Include both for each story.
-Write the expected output without its trailing newline. Use exit code zero
-for a successful probe. The Given field describes the fixture setup for a
-reviewer. To add another action, ship its executable checker with the new
-contract before using it in a story.
+Give each epic at least one feature, each feature at least one story, and
+each story at least one acceptance criterion. Use a numeric suffix and keep
+IDs stable and unique across the document. Use an em dash between each ID
+and title. The story narrative may span multiple lines or paragraphs.
 
-A product document may contain multiple epics, features, and stories. A
-reference run verifies one explicitly selected story. The checker's report
-includes the parent IDs, acceptance IDs, original document digest, and
-deployed artifact digest.
+Write the CALM node IDs in backticks and separate multiple IDs with commas,
+as in `` Architecture owner: `health_probe`, `release_api` ``.
+Node IDs start with an ASCII letter or underscore and may contain digits,
+hyphens, and underscores.
+
+Write Given as the setup, When as the action, and Then as the observable
+result. Enclose the Check ID in backticks. Check IDs start with a lowercase
+ASCII letter and use lowercase letters and digits with single dots, hyphens,
+or underscores between segments. Use IDs registered by the consuming
+project. Keep executable assertions, fixture data, and verification
+commands in that project.

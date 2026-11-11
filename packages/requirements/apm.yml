@@ -1,6 +1,6 @@
 name: forge-kit-requirements
-version: "0.2.0"
-description: Structure product requirements and independently verify story acceptance evidence.
+version: "0.3.0"
+description: Compile Markdown product requirements and independently verify story acceptance evidence.
 targets:
   - copilot
 dependencies:

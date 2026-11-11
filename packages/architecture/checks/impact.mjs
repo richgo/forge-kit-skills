@@ -109,7 +109,8 @@ function requirementsIndex(requirements, nodes) {
       assert.ok(matches(featureId, /^FEAT-\d+$/) && text(feature.title) && text(feature.outcome) && Array.isArray(items), 'Invalid requirement feature');
       add(features, featureId, { ...feature, epicId }, 'feature');
       for (const { id: storyId, acceptanceCriteria, ...story } of items) {
-        assert.ok(matches(storyId, /^STORY-\d+$/) && ['title', 'asA', 'iWant', 'soThat'].every(field => text(story[field])) &&
+        assert.ok(matches(storyId, /^STORY-\d+$/) && text(story.title) &&
+          (text(story.description) || ['asA', 'iWant', 'soThat'].every(field => text(story[field]))) &&
           Array.isArray(acceptanceCriteria) && acceptanceCriteria.length > 0, 'Invalid requirement story ' + storyId);
         assert.ok(nodes.has(story.architectureNode), 'Unknown CALM owner for ' + storyId);
         add(stories, storyId, { ...story, epicId, featureId }, 'story');

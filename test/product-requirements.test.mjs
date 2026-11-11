@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { selectStory, verifyTrace } from '../packages/requirements/checks/product-requirements.mjs';
 
-const template = new URL('../packages/requirements/templates/product-requirements.json', import.meta.url);
-const load = async () => JSON.parse(await readFile(template));
+const legacyFixture = new URL('./fixtures/legacy-product-requirements.json', import.meta.url);
+const load = async () => JSON.parse(await readFile(legacyFixture));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
 test('selects a stable story and traces both independently executable assertions', async () => {
@@ -30,7 +30,7 @@ test('rejects duplicates and acceptance criteria that cannot be executed', async
 });
 
 test('APMX verifies the story, observed outcome and deployed digest', async () => {
-  const requirements = await readFile(template);
+  const requirements = await readFile(legacyFixture);
   const { trace } = selectStory(JSON.parse(requirements), 'STORY-001');
   const artifact = Buffer.from('candidate');
   const plan = { requirement: trace.story, target: trace.node, trace, implementation: { mode: 'direct' }, maxRepairs: 1 };
