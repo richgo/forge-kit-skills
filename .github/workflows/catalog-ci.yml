@@ -76,6 +76,7 @@ jobs:
             "$apmx" --from "richgo/forge-kit-skills/packages/$package#$CATALOG_REF" --plan
           done
           mkdir -p .forge
-          printf 'Review a change in the reference project.\n' > request.md
+          printf '%s\n' '# Approved change request' '' '## Stories' '' '- `STORY-001`' \
+            '' '## Allowed source paths' '' '- `candidate.json`' > request.md
           printf 'exit 1\n' > .forge/verify-change
           "$apmx" --from "richgo/forge-kit-skills/packages/software-factory#$CATALOG_REF" --plan

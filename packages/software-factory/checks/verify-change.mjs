@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { parseMarkdownRequirements } from './markdown-requirements.mjs';
 
@@ -20,7 +21,7 @@ function protectedPath(path) {
 
 function readApproved(path) {
   assert.ok(lstatSync(path).isFile(), 'Approved file must be a regular file: ' + path);
-  return decoder.decode(readFileSync(path));
+  return readFileSync(path);
 }
 
 function sourcePath(value) {
@@ -62,21 +63,35 @@ function parseRequest(raw) {
 }
 
 function approvedChange() {
-  const requirements = parseMarkdownRequirements(readApproved('product-requirements.md'));
-  const { stories, paths } = parseRequest(readApproved('request.md'));
+  const markdown = readApproved('product-requirements.md');
+  const request = readApproved('request.md');
+  const requirements = parseMarkdownRequirements(markdown);
+  const { stories, paths } = parseRequest(decoder.decode(request));
+  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
   const catalogue = new Map(requirements.epics.flatMap(epic =>
     epic.features.flatMap(feature => feature.stories.map(story => [story.id, story]))
   ));
   const checks = new Set();
+  const acceptanceIds = [];
   for (const id of stories) {
     const story = catalogue.get(id);
     assert.ok(story, 'Unknown selected story ' + id);
     for (const criterion of story.acceptanceCriteria) {
       checks.add(criterion.check);
+      acceptanceIds.push(criterion.id);
     }
   }
   assert.ok(checks.size, 'The selected stories must have acceptance checks');
-  return { checks, paths };
+  const evidence = {
+    compiler: 'forgekit-requirements/markdown-v1',
+    sourceSha256: sha256(markdown),
+    normalizedSha256: sha256(JSON.stringify(requirements)),
+    requestSha256: sha256(request),
+    stories,
+    acceptanceIds,
+    checks: [...checks],
+  };
+  return { checks, paths, evidence };
 }
 
 function verifyPatch(patch, { checks, paths }) {
@@ -103,6 +118,7 @@ try {
   const change = approvedChange();
   const patch = process.argv[2];
   if (patch !== undefined) process.exitCode = verifyPatch(patch, change);
+  if (!process.exitCode) console.log(JSON.stringify(change.evidence));
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
