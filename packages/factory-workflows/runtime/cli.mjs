@@ -6,18 +6,19 @@ import { validateArchitecture } from '../../architecture/checks/architecture.mjs
 import { checkCandidate, signReceipt, verifyReceipt } from '../../acceptance/checks/acceptance.mjs';
 import { createEnvironment } from '../../delivery/runtime/delivery.mjs';
 import { build, jevRepair, runLifecycle } from './lifecycle.mjs';
+import { readReferenceInputs } from './reference-inputs.mjs';
 
 const [command, directory, flag] = process.argv.slice(2);
 assert.ok(directory, 'Supply an output directory');
-const names = { requirements: 'requirements.json', architecture: 'architecture.json', view: 'architecture.c4' };
-const inputs = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([key, name]) => [
-  key, await readFile(new URL('../../../examples/reference/' + name, import.meta.url)),
-])));
+const inputs = await readReferenceInputs();
 const save = (name, bytes) => writeFile(join(directory, name), bytes, { flag: 'wx' });
 const read = name => readFile(join(directory, name));
 await mkdir(directory, { recursive: true });
 
-if (command === 'build') {
+if (command === 'stage-requirements') {
+  validateArchitecture(inputs);
+  await save('requirements.json', inputs.requirements);
+} else if (command === 'build') {
   validateArchitecture(inputs);
   await save('candidate.json', build(inputs.requirements));
 } else if (command === 'check') {
@@ -56,5 +57,5 @@ if (command === 'build') {
   });
   await save('lifecycle.json', JSON.stringify(result, null, 2));
 } else {
-  throw new Error('Expected build, check, deliver or rehearse');
+  throw new Error('Expected build, check, deliver, rehearse or stage-requirements');
 }

@@ -1,11 +1,15 @@
 # Reference lifecycle
 
-The fixture takes one requirement for an HTTP readiness endpoint. The CALM
+The reference defines an HTTP readiness story in
+[`product-requirements.md`](../examples/reference/product-requirements.md).
+The story links to the CALM service and the independent HTTP assertion in
+[`acceptance.json`](../examples/reference/acceptance.json). The runtime
+compiles both sources into the input used by the HTTP checker. The CALM
 model owns the service IDs and connections, and the checker rejects a LikeC4
-view that differs from the generated projection. The candidate is a small
-JSON response descriptor. The acceptance checker compares the descriptor
-with the requirement and binds the exact candidate, requirement, CALM model,
-and view to an in-toto Statement.
+view that differs from the generated projection. The acceptance checker
+compares the candidate response descriptor with the HTTP assertion. Its
+in-toto Statement binds the compiler version and exact digests of the
+candidate, Markdown, fixture, generated input, CALM model, and LikeC4 view.
 
 ## Run locally
 
@@ -56,10 +60,15 @@ the runtime from the same catalog commit that defines the reusable workflow.
 
 ## Plan the APMX contracts
 
-From a disposable, non-Git copy of `examples/reference`, use APMX 0.8.0 and
+From the catalog root, copy the reference into a disposable directory and
+generate the JSON input used by the acceptance contract. Use APMX 0.8.0 and
 replace the pin with a reviewed full commit SHA.
 
 ```sh
+workspace="$(mktemp -d)"
+cp -R examples/reference/. "$workspace/"
+node packages/factory-workflows/runtime/cli.mjs stage-requirements "$workspace"
+cd "$workspace"
 apmx --from 'richgo/forge-kit-skills/packages/acceptance#<reviewed-commit-sha>' --plan
 apmx --from 'richgo/forge-kit-skills/packages/repair-acceptance#<reviewed-commit-sha>' --plan
 ```

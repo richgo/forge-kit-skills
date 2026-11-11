@@ -70,6 +70,7 @@ jobs:
           tar -xzf "$scratch/$copilot_package" -C "$scratch/copilot"
           export PATH="$scratch/copilot/package:$PATH"
           cp -R examples/reference "$scratch/workspace"
+          node packages/factory-workflows/runtime/cli.mjs stage-requirements "$scratch/workspace"
           cd "$scratch/workspace"
           for package in acceptance repair-acceptance; do
             "$apmx" --from "richgo/forge-kit-skills/packages/$package#$CATALOG_REF" --plan

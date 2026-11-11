@@ -1,5 +1,5 @@
 name: forge-kit-architecture
-version: "0.2.0"
+version: "0.2.1"
 description: CALM and LikeC4 validation, requirement traceability, and change impact planning.
 targets: [copilot]
 dependencies:

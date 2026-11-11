@@ -5,11 +5,13 @@ description: Turn a requirements document into traceable acceptance criteria and
 
 # Specify and plan
 
-Use the package's Epic → Feature → Story authoring template for structured
-product requirements. Give every acceptance criterion a stable ID, a setup,
-a supported action, and an executable assertion. Link each story to its
-owning CALM node. Run the requirements verification contract against the
-independently replayed candidate evidence.
+Use the package's `product-requirements.md` template for the approved
+requirements source. Write each epic and feature outcome and each story's
+description in prose. Link each story to its owning CALM nodes. Give every
+acceptance criterion a stable ID, observable Given, When, and Then statements,
+and a Check ID that maps to an executable check in the consuming project.
+Compile the Markdown before planning. Run the requirements verification
+contract against the independently replayed candidate evidence.
 
 Preserve the source requirements revision. Assign stable IDs to distinct requirements, retaining any existing IDs. For each, record the actor, observable outcome, and constraints. Write at least one acceptance case with setup, action, and expected result. Include failure cases where required by the source.
 

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import {
+  acceptanceSource, compileFixtureRequirements, fixtureIdentity, markdownPredicateType, markdownSource,
+} from './fixture-requirements.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -33,7 +36,9 @@ export function selectStory(document, storyId) {
       text(feature.outcome, 'feature outcome');
       for (const story of list(feature.stories, 'stories list')) {
         register(story, 'STORY');
-        for (const field of ['title', 'asA', 'iWant', 'soThat']) text(story[field], 'story ' + field);
+        for (const field of story.description === undefined ? ['title', 'asA', 'iWant', 'soThat'] : ['title', 'description']) {
+          text(story[field], 'story ' + field);
+        }
         assert.match(story.architectureNode, /^[a-z][a-z0-9_]*$/, 'Invalid CALM node reference');
         const assertions = {};
         const criteria = list(story.acceptanceCriteria, 'acceptance criteria').map(item => {
@@ -72,11 +77,14 @@ export function selectStory(document, storyId) {
   return selected;
 }
 
-export function verifyTrace(requirements, plan, receipt, artifact) {
+export function verifyTrace(requirements, plan, receipt, artifact, acceptance) {
   assert.equal(receipt._type, 'https://in-toto.io/Statement/v1');
-  assert.equal(receipt.predicateType, 'https://github.com/richgo/forge-kit/attestations/bootstrap/v3');
+  const markdown = acceptance !== undefined;
+  assert.equal(receipt.predicateType, markdown ? markdownPredicateType :
+    'https://github.com/richgo/forge-kit/attestations/bootstrap/v3');
   const { predicate } = receipt;
-  const { trace } = selectStory(JSON.parse(requirements), predicate.requirement);
+  const document = markdown ? compileFixtureRequirements(requirements, acceptance) : JSON.parse(requirements);
+  const { trace } = selectStory(document, predicate.requirement);
   assert.deepEqual(plan.trace, trace, 'Plan story trace mismatch');
   assert.equal(plan.requirement, trace.story, 'Plan selects a different story');
   assert.equal(plan.target, trace.node, 'Plan targets a different CALM node');
@@ -85,9 +93,13 @@ export function verifyTrace(requirements, plan, receipt, artifact) {
     predicate.repairs >= 0 && predicate.repairs <= plan.maxRepairs, 'Repair exceeds plan budget');
   assert.deepEqual(predicate.trace, trace, 'Receipt story trace mismatch');
   const requirementsSha256 = sha256(requirements);
-  assert.deepEqual(predicate.materials.filter(item => item.name === 'product-requirements.json'), [
-    { name: 'product-requirements.json', digest: { sha256: requirementsSha256 } },
+  const sources = markdown ? [markdownSource, acceptanceSource] : ['product-requirements.json'];
+  const identity = markdown ? fixtureIdentity(requirements, acceptance, document) : undefined;
+  assert.deepEqual(predicate.materials.filter(item => sources.includes(item.name)), [
+    { name: sources[0], digest: { sha256: requirementsSha256 } },
+    ...(markdown ? [{ name: acceptanceSource, digest: { sha256: identity.acceptanceSha256 } }] : []),
   ], 'Product requirements digest mismatch');
+  if (markdown) assert.deepEqual(predicate.requirements, identity, 'Requirements compiler identity mismatch');
   const artifactSha256 = sha256(artifact);
   assert.deepEqual(receipt.subject, [
     { name: 'deployed.mjs', digest: { sha256: artifactSha256 } },
@@ -102,5 +114,5 @@ export function verifyTrace(requirements, plan, receipt, artifact) {
       assert.equal(observation[field], field === 'stdout' ? value + '\n' : value, criterion.id + ' failed');
     }
   }
-  return { requirementsSha256, artifactSha256, trace };
+  return { requirementsSha256, artifactSha256, trace, ...(markdown && { requirements: identity }) };
 }

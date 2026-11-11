@@ -1,0 +1,6 @@
+{
+  "id": "http.readiness",
+  "path": "/ready",
+  "status": 200,
+  "body": "ready"
+}

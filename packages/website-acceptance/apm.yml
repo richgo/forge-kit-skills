@@ -1,5 +1,5 @@
 name: forge-kit-website-acceptance
-version: "0.1.0"
+version: "0.2.0"
 description: Trace a checked public website to approved requirements and CALM.
 targets: [copilot]
 dependencies:
