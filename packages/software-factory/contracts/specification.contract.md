@@ -1,7 +1,7 @@
 ---
 needs:
   - request.md
-  - product-requirements.md
+  - specs/product-requirements.md
   - plan.md
 produces: specification.md
 verify:
@@ -10,7 +10,7 @@ verify:
 
 Turn the checked plan into an implementation specification. Trace each
 proposed change to a requested story and its acceptance criteria in
-product-requirements.md. Identify approved files
+specs/product-requirements.md. Identify approved files
 and interfaces to change, dependencies and architecture constraints to
 preserve, and the project tests that cover the requested behavior. Where
 the project uses CALM and LikeC4, identify the owning components and required

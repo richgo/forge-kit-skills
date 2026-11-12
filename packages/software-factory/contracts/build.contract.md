@@ -1,7 +1,7 @@
 ---
 needs:
   - request.md
-  - product-requirements.md
+  - specs/product-requirements.md
   - plan.md
   - specification.md
   - .forge/verify-change

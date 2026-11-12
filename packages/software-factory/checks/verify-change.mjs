@@ -4,11 +4,12 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { parseMarkdownRequirements } from './markdown-requirements.mjs';
 
+const requirementsPath = 'specs/product-requirements.md';
 const protectedDirectories = new Set([
   '.forge', 'checks', '.github', '.git', '.apm', 'apm_modules', '_apmx_source', '_apmx_context',
 ]);
 const protectedFiles = new Set([
-  'apm.yml', 'apm.lock', 'apm.lock.yaml', 'apm-policy.yml', 'request.md', 'product-requirements.md',
+  'apm.yml', 'apm.lock', 'apm.lock.yaml', 'apm-policy.yml', 'request.md', 'product-requirements.md', requirementsPath,
   'plan.md', 'specification.md', 'implementation.md', 'review.md', 'changes.diff',
 ]);
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -63,7 +64,8 @@ function parseRequest(raw) {
 }
 
 function approvedChange() {
-  const markdown = readApproved('product-requirements.md');
+  assert.ok(lstatSync('specs').isDirectory(), 'Expected a regular specs directory');
+  const markdown = readApproved(requirementsPath);
   const request = readApproved('request.md');
   const requirements = parseMarkdownRequirements(markdown);
   const { stories, paths } = parseRequest(decoder.decode(request));

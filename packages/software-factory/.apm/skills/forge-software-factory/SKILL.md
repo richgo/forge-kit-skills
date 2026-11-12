@@ -8,7 +8,7 @@ describe artifact handoffs and use the approved consumer checker for the
 build gate.
 
 Check that the reviewed base contains the required source, versioned
-`product-requirements.md`, a `request.md` selecting stories and exact source
+`specs/product-requirements.md`, a `request.md` selecting stories and exact source
 paths, and a `.forge/verify-change` entry point. It receives the unapplied
 patch and the distinct acceptance check IDs selected by the factory.
 It must validate the scope, reject unknown check IDs, keep approved

@@ -1,7 +1,7 @@
 ---
 needs:
   - request.md
-  - product-requirements.md
+  - specs/product-requirements.md
   - specification.md
   - changes.diff
   - implementation.md

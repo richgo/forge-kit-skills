@@ -4,7 +4,7 @@ This is a native APMX factory package. APMX orders its Markdown contracts by
 their file handoffs.
 
 ```text
-product-requirements.md + request.md → plan.md → specification.md → changes.diff + implementation.md → review.md
+specs/product-requirements.md + request.md → plan.md → specification.md → changes.diff + implementation.md → review.md
 ```
 
 The project owns the software stack, source, architecture, build tools, and
@@ -17,7 +17,7 @@ judge the reports and approve changes.
 ## Prepare the project
 
 1. Review a base revision with the source, any architecture files,
-   `product-requirements.md`, `request.md` and `.forge/verify-change`. Use the
+   `specs/product-requirements.md`, `request.md` and `.forge/verify-change`. Use the
    [requirements template](../requirements/templates/product-requirements.md)
    to author stories, architecture owners and Given/When/Then criteria with
    stable check IDs. Reserve the factory output names at the workspace root.

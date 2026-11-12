@@ -49,10 +49,11 @@ function fixture(t, source, before, after, verification) {
   const cwd = mkdtempSync(join(tmpdir(), 'forge-apmx-check-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   mkdirSync(join(cwd, '.forge'));
+  mkdirSync(join(cwd, 'specs'));
   const git = (...args) => execFileSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd });
   writeFileSync(join(cwd, source), before);
   writeFileSync(join(cwd, '.forge', 'verify-change'), verification);
-  writeFileSync(join(cwd, 'product-requirements.md'), requirements);
+  writeFileSync(join(cwd, 'specs/product-requirements.md'), requirements);
   writeFileSync(join(cwd, 'request.md'), requestFor('STORY-001', source));
   git('init', '-q');
   git('add', '.');
@@ -98,7 +99,7 @@ test('the same factory check delegates to projects using different languages', t
     assert.deepEqual(evidence.stories, ['STORY-001']);
     assert.deepEqual(evidence.acceptanceIds, ['AC-001']);
     assert.deepEqual(evidence.checks, ['quote.correct']);
-    assert.equal(evidence.sourceSha256, hash('product-requirements.md'));
+    assert.equal(evidence.sourceSha256, hash('specs/product-requirements.md'));
     assert.equal(evidence.requestSha256, hash('request.md'));
     assert.match(evidence.normalizedSha256, /^[a-f0-9]{64}$/);
   }
@@ -114,7 +115,7 @@ test('unrecognized stories fail before the project verifier runs', t => {
 
 test('malformed requirements fail before the project verifier runs', t => {
   const { cwd } = fixture(t, 'app.sh', 'echo old\n', 'echo new\n', 'exit 0\n');
-  writeFileSync(join(cwd, 'product-requirements.md'), '# Product requirements\n');
+  writeFileSync(join(cwd, 'specs/product-requirements.md'), '# Product requirements\n');
   assert.equal(check(cwd).status, 1);
 });
 
@@ -128,8 +129,8 @@ test('request scope rejects even a source patch the project verifier would accep
 
 test('a patch cannot replace approved requirements or request', t => {
   const { cwd, git } = fixture(t, 'app.sh', 'echo old\n', 'echo new\n', 'exit 0\n');
-  for (const name of ['product-requirements.md', 'request.md']) {
-    const content = name === 'product-requirements.md' ? requirements : requestFor('STORY-001', 'app.sh');
+  for (const name of ['specs/product-requirements.md', 'request.md']) {
+    const content = name === 'specs/product-requirements.md' ? requirements : requestFor('STORY-001', 'app.sh');
     writeFileSync(join(cwd, name), content + '\n');
     writeFileSync(join(cwd, 'changes.diff'), git('diff', '--full-index', '--no-renames'));
     writeFileSync(join(cwd, name), content);
