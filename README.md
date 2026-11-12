@@ -13,7 +13,7 @@ requirements, build, review, and repair workflows.
 | [`packages/acceptance`](packages/acceptance) | 0.2.0 | APMX build contract and independent acceptance with signed in-toto evidence |
 | [`packages/repair-acceptance`](packages/repair-acceptance) | 0.1.0 | APMX contract and independent before-and-after repair check |
 | [`packages/software-factory`](packages/software-factory) | 0.2.0 | APMX contracts for approved Markdown changes |
-| [`packages/website-acceptance`](packages/website-acceptance) | 0.2.0 | Independent Trail Desk requirements trace and artifact checks |
+| [`packages/website-acceptance`](packages/website-acceptance) | 0.3.0 | Website acceptance skill and evidence review prompt, plus the Trail Desk rehearsal contract |
 | [`packages/delivery`](packages/delivery) | 0.1.0 | Gated promotion, HTTP readiness observation, and rollback |
 
 ## Consume a package
