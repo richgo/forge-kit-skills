@@ -1,6 +1,6 @@
 name: forge-kit-website-acceptance
-version: "0.2.0"
-description: Trace a checked public website to approved requirements and CALM.
+version: "0.3.0"
+description: Website change acceptance skill, evidence review prompt, and reference rehearsal contract.
 targets: [copilot]
 dependencies:
   apm: []

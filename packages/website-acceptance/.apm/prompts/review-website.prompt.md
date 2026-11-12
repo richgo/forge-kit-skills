@@ -1,9 +1,11 @@
 ---
-description: Review a verified static website release.
+description: Review verification evidence for a website change.
 ---
 
-Compare the requirement revision, CALM model, Chromium observations, and
-signed APMX report. Check that each requested acceptance ID appears once,
-each story has a CALM owner, and the report identifies the exact HTML and
-architecture bytes. Treat a missing or mismatched observation as a failed
-release check. Report what is missing without approving the deployment.
+Use the `forge-website-acceptance` skill. Review the approved change against
+the project architecture, independent check results, and candidate or release
+artifact digests. Trace each selected acceptance criterion to its observed
+result. For interface changes, check the evidence for affected consumers and
+compatibility. Verify required signatures against the project's trust policy.
+Report missing, failed, or mismatched evidence and keep release authorization
+with the project's release workflow.
