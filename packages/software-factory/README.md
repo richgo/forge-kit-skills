@@ -4,7 +4,7 @@ This is a native APMX factory package. APMX orders its Markdown contracts by
 their file handoffs.
 
 ```text
-product-requirements.md + request.md → plan.md → specification.md → changes.diff + implementation.md → review.md
+specs/product-requirements.md + request.md → plan.md → specification.md → changes.diff + implementation.md → review.md
 ```
 
 The project owns the software stack, source, architecture, build tools, and
@@ -17,7 +17,7 @@ judge the reports and approve changes.
 ## Prepare the project
 
 1. Review a base revision with the source, any architecture files,
-   `product-requirements.md`, `request.md` and `.forge/verify-change`. Use the
+   `specs/product-requirements.md`, `request.md` and `.forge/verify-change`. Use the
    [requirements template](../requirements/templates/product-requirements.md)
    to author stories, architecture owners and Given/When/Then criteria with
    stable check IDs. Reserve the factory output names at the workspace root.
@@ -43,6 +43,48 @@ approved paths and blocks edits to its contracts, approved requirements and
 request, check entry point, workflow and policy files, and reserved handoffs. The
 project checker must enforce any additional scope and protect project tests
 or fixtures that serve as independent evidence.
+
+### OpenSpec and test-first verification
+
+Use OpenSpec 2.x to validate the reviewed change before invoking APMX. Commit
+the change artifacts and a binding in `.forge/openspec.json`. The existing
+request and product requirements select the stories and their check IDs.
+The binding links each selected acceptance ID to one scenario title in an
+ADDED or MODIFIED requirement.
+
+```json
+{
+  "schema": 1,
+  "change": "report-readiness",
+  "acceptance": {
+    "AC-001": {
+      "spec": "openspec/changes/report-readiness/specs/readiness/spec.md",
+      "scenario": "Report readiness"
+    },
+    "AC-002": {
+      "spec": "openspec/changes/report-readiness/specs/readiness/spec.md",
+      "scenario": "Signal successful completion"
+    }
+  }
+}
+```
+
+The package checks the binding against the reviewed `proposal.md`, `tasks.md`
+and referenced deltas. Both the plan and build checks report SHA-256 digests
+of the binding and change directory, including `design.md` when present.
+Updates to reviewed OpenSpec inputs go through a separate reviewed change.
+
+To verify a new behavior or a repair test-first, commit an independent
+`.forge/verify-baseline` alongside the candidate checker. APMX runs it on
+an isolated copy of the base before starting implementation. The script
+receives one selected check ID per invocation. It exits with code 10 only
+after observing the expected missing behavior. Treat unexpected errors,
+unsupported IDs and missing prerequisites as failures distinct from code 10.
+Use the same reviewed assertion in `.forge/verify-change` and require it to
+pass on the candidate. This path fits changes for which every selected
+check should fail on the base. Keep passing regression checks in the
+candidate verifier. The baseline and candidate observations are emitted
+by different native contract checks and rerun during independent replay.
 
 ## Run and verify
 

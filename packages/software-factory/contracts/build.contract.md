@@ -1,7 +1,7 @@
 ---
 needs:
   - request.md
-  - product-requirements.md
+  - specs/product-requirements.md
   - plan.md
   - specification.md
   - .forge/verify-change
@@ -20,7 +20,9 @@ Implement the selected stories in the private copy of the project, following
 the project's language, build tools, and conventions. Edit only the exact
 source paths approved in request.md. Preserve the approved requirements and
 request, verification entry point, independent checks, workflows and factory
-policy files. If the change needs a new runtime, dependency, or
+policy files. Preserve .forge/openspec.json and the approved OpenSpec change
+when present. Use its scenario links to implement the selected behavior.
+If the change needs a new runtime, dependency, or
 policy approval, describe it in the implementation report for review.
 
 Write implementation.md with the changes, selected story and acceptance IDs, and

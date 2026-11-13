@@ -16,7 +16,7 @@ structural errors with line numbers.
 import { readFile } from 'node:fs/promises';
 import { parseMarkdownRequirements } from './checks/markdown-requirements.mjs';
 
-const source = await readFile('product-requirements.md');
+const source = await readFile('specs/product-requirements.md');
 const requirements = parseMarkdownRequirements(source);
 ```
 

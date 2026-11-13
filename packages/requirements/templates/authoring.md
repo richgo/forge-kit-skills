@@ -1,6 +1,6 @@
 # Author product requirements
 
-Copy [product-requirements.md](product-requirements.md) and replace the sample
+Copy [product-requirements.md](product-requirements.md) to `specs/product-requirements.md` in the project and replace the sample
 with the approved requirements. Keep the first line `# Product requirements`.
 The compiler interprets this format as schema version 1.
 

@@ -1,7 +1,7 @@
 ---
 needs:
   - request.md
-  - product-requirements.md
+  - specs/product-requirements.md
   - specification.md
   - changes.diff
   - implementation.md
@@ -16,5 +16,9 @@ Cite concrete files and lines in the
 patch, distinguish observed facts from concerns, and flag missing tests,
 unsafe changes, or approval requirements. State when there are no findings.
 This is advisory review for the human reviewer.
+
+When .forge/openspec.json is present, review the patch against the linked
+scenarios. Use the independent check result for acceptance and avoid claiming
+to have run the baseline or candidate checks yourself.
 
 Write only review.md. Leave the checked patch unchanged.

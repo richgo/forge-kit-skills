@@ -5,7 +5,7 @@ description: Turn a requirements document into traceable acceptance criteria and
 
 # Specify and plan
 
-Use the package's `product-requirements.md` template for the approved
+Use the package's `product-requirements.md` template at `specs/product-requirements.md` for the approved
 requirements source. Write each epic and feature outcome and each story's
 description in prose. Link each story to its owning CALM nodes. Give every
 acceptance criterion a stable ID, observable Given, When, and Then statements,
