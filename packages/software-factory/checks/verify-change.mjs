@@ -3,21 +3,26 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { parseMarkdownRequirements } from './markdown-requirements.mjs';
+import { readOpenSpecEvidence } from './openspec.mjs';
 
 const requirementsPath = 'specs/product-requirements.md';
+const baselineVerifier = '.forge/verify-baseline';
+const candidateVerifier = '.forge/verify-change';
 const protectedDirectories = new Set([
-  '.forge', 'checks', '.github', '.git', '.apm', 'apm_modules', '_apmx_source', '_apmx_context',
+  '.forge', 'checks', '.github', '.git', '.apm', 'apm_modules', '_apmx_source', '_apmx_context', 'openspec',
 ]);
 const protectedFiles = new Set([
   'apm.yml', 'apm.lock', 'apm.lock.yaml', 'apm-policy.yml', 'request.md', 'product-requirements.md', requirementsPath,
   'plan.md', 'specification.md', 'implementation.md', 'review.md', 'changes.diff',
 ]);
 const decoder = new TextDecoder('utf-8', { fatal: true });
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 function protectedPath(path) {
   const normalized = path.toLowerCase();
   return protectedDirectories.has(normalized.split('/')[0])
-    || protectedFiles.has(normalized) || normalized.endsWith('.contract.md');
+    || protectedFiles.has(normalized) || normalized.endsWith('.contract.md')
+    || normalized.startsWith('.agents/skills/openspec-');
 }
 
 function readApproved(path) {
@@ -69,7 +74,6 @@ function approvedChange() {
   const request = readApproved('request.md');
   const requirements = parseMarkdownRequirements(markdown);
   const { stories, paths } = parseRequest(decoder.decode(request));
-  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
   const catalogue = new Map(requirements.epics.flatMap(epic =>
     epic.features.flatMap(feature => feature.stories.map(story => [story.id, story]))
   ));
@@ -93,13 +97,37 @@ function approvedChange() {
     acceptanceIds,
     checks: [...checks],
   };
+  const openspec = readOpenSpecEvidence(acceptanceIds);
+  if (openspec) evidence.openspec = openspec;
   return { checks, paths, evidence };
 }
 
-function verifyPatch(patch, { checks, paths }) {
+function runProjectChecker(script, args) {
+  const result = spawnSync('bash', ['-e', script, ...args], { stdio: 'inherit' });
+  if (result.error) throw result.error;
+  assert.equal(result.signal, null, script + ' terminated by ' + result.signal);
+  return result.status;
+}
+
+function verifyBaseline({ checks, evidence }) {
+  const baseline = lstatSync(baselineVerifier, { throwIfNoEntry: false });
+  if (!baseline) return;
+  assert.ok(lstatSync('.forge').isDirectory(), 'Expected a regular .forge directory');
+  const verifierSha256 = sha256(readApproved(baselineVerifier));
+  const observations = [];
+  for (const check of checks) {
+    const status = runProjectChecker(baselineVerifier, [check]);
+    assert.notEqual(status, 0, 'Baseline check unexpectedly passed: ' + check);
+    assert.equal(status, 10, 'Baseline check did not report an expected behavior failure: ' + check);
+    observations.push({ check, status: 'behavior-missing' });
+  }
+  evidence.testFirst = { baselineVerifierSha256: verifierSha256, baseline: observations };
+}
+
+function verifyPatch(patch, { checks, paths, evidence }) {
   const patchStat = lstatSync(patch);
   assert.ok(patchStat.isFile() && patchStat.size, 'A nonempty regular patch is required');
-  assert.ok(lstatSync('.forge').isDirectory() && lstatSync('.forge/verify-change').isFile(),
+  assert.ok(lstatSync('.forge').isDirectory() && lstatSync(candidateVerifier).isFile(),
     'A reviewed .forge/verify-change file is required');
   execFileSync('git', ['apply', '--check', '--', patch], { stdio: 'inherit' });
   const stats = decoder.decode(execFileSync('git', ['apply', '--numstat', '-z', '--', patch]));
@@ -111,15 +139,22 @@ function verifyPatch(patch, { checks, paths }) {
       'Patch touches a protected path or uses an unsupported change: ' + (path ?? record));
     assert.ok(paths.has(path), 'Patch changes a path outside the approved request scope: ' + path);
   }
-  const result = spawnSync('bash', ['-e', '.forge/verify-change', patch, ...checks], { stdio: 'inherit' });
-  if (result.error) throw result.error;
-  return result.status ?? 1;
+  const testFirst = lstatSync(baselineVerifier, { throwIfNoEntry: false });
+  const candidateVerifierSha256 = testFirst ? sha256(readApproved(candidateVerifier)) : undefined;
+  const status = runProjectChecker(candidateVerifier, [patch, ...checks]);
+  if (status !== 0) {
+    console.error('The candidate acceptance checks failed');
+    return status;
+  }
+  if (testFirst) evidence.testFirst = { candidateVerifierSha256, candidate: 'passed' };
+  return 0;
 }
 
 try {
   const change = approvedChange();
   const patch = process.argv[2];
-  if (patch !== undefined) process.exitCode = verifyPatch(patch, change);
+  if (patch === '--baseline') verifyBaseline(change);
+  else if (patch !== undefined) process.exitCode = verifyPatch(patch, change);
   if (!process.exitCode) console.log(JSON.stringify(change.evidence));
 } catch (error) {
   console.error(error.message);
