@@ -12,7 +12,7 @@ requirements, build, review, and repair workflows.
 | [`packages/architecture`](packages/architecture) | 0.2.1 | CALM requirement traceability and LikeC4 projection and drift check |
 | [`packages/acceptance`](packages/acceptance) | 0.2.0 | APMX build contract and independent acceptance with signed in-toto evidence |
 | [`packages/repair-acceptance`](packages/repair-acceptance) | 0.1.0 | APMX contract and independent before-and-after repair check |
-| [`packages/software-factory`](packages/software-factory) | 0.2.0 | APMX contracts for approved Markdown changes |
+| [`packages/software-factory`](packages/software-factory) | 0.3.0 | Native APMX plan, specification, build and review with OpenSpec scenario binding and independent test-first checks |
 | [`packages/website-acceptance`](packages/website-acceptance) | 0.3.0 | Website acceptance skill and evidence review prompt, plus the Trail Desk rehearsal contract |
 | [`packages/delivery`](packages/delivery) | 0.1.0 | Gated promotion, HTTP readiness observation, and rollback |
 
@@ -43,8 +43,12 @@ The workflow and contract paths in [`exports.json`](packages/factory-workflows/e
 are source exports. Copy the approved GH-AW fragment into the consumer's
 `.github/workflows/shared/` before compilation. Give the caller only the
 declared read permission and scope GitHub access to its approved repository.
-APMX can select the contract from the pinned package with `apmx --from`.
-Its workspace needs `failure.md`.
+APMX selects the contracts from the chosen package with `apmx --from`.
+The [software-factory runbook](packages/software-factory/README.md) lists the
+approved workspace inputs. The repair-planning contract uses `failure.md`.
+ForgeKit's [checkout runbook](https://github.com/richgo/forge-kit/blob/main/docs/reference-checkout.md)
+shows how the same software-factory package runs against pinned units in
+monorepo, multi-repo and hybrid layouts.
 
 APM installs the agent primitives. The `exports.json` in each new package
 also identifies executable source assets. Fetch those assets from the same

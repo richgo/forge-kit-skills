@@ -1,5 +1,11 @@
 # Reference lifecycle
 
+This runbook covers the readiness and recovery fixture built from the
+catalog's acceptance, repair and workflow packages. For reviewed OpenSpec
+changes, use the [native software-factory package](../packages/software-factory/README.md).
+For shared specifications and implementation units, see
+[ForgeKit's checkout reference](https://github.com/richgo/forge-kit/blob/main/docs/reference-checkout.md).
+
 The reference defines an HTTP readiness story in
 [`product-requirements.md`](../examples/reference/product-requirements.md).
 The story links to the CALM service and the independent HTTP assertion in
